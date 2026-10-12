@@ -16,81 +16,69 @@ import {
   RotateCcw,
   ShieldAlert,
   TerminalSquare,
+  Star,
   Trophy,
   WifiOff,
   X,
   XCircle,
 } from 'lucide-react';
-import { MODULE_IDS, formatDuration } from '../shared/quest.js';
+import { LEVELS, LEVEL_IDS, MODULE_IDS, formatDuration } from '../shared/quest.js';
 import { useNow } from './api.js';
+import {
+  NETWORK_FACTS,
+  NETWORK_NODE_LABELS,
+  SECURITY_ACTIONS,
+  SECURITY_LOG,
+  SECURITY_SIGNALS,
+  byLevel,
+  glossaryFor,
+  hintsFor,
+  storyFor,
+} from './questContent.js';
 import Registration from './Registration.jsx';
 import { FinalResults } from './Results.jsx';
 import { useQuestSession } from './useQuestSession.js';
 
+// Тексты этапов лежат в questContent.js — отдельно для каждого уровня.
 const modules = [
   {
     id: 'sql',
     label: 'SQL',
-    title: 'След в журнале доступа',
     icon: Database,
     accent: '#29f0c8',
     accentRgb: '41, 240, 200',
-    intro:
-      'На мониторе Орлова открыт журнал посещений.\n\nВ нем перемешаны записи разных людей и разных терминалов.\n\nКоманде нужно восстановить последнюю точку, где Орлов оставил цифровой след.',
-    outcome:
-      'Журнал показывает: 22:48, серверная C, терминал B-14.\n\nЗначит, Орлов не покинул вуз. Он спустился туда, где стоит экспериментальный контур проекта.',
     component: SqlChallenge,
   },
   {
     id: 'python',
     label: 'Python',
-    title: 'Парсер логов',
     icon: Code2,
     accent: '#ffdd55',
     accentRgb: '255, 221, 85',
-    intro:
-      'На диске терминала найден Python-скрипт Орлова.\n\nСкрипт просматривал служебные логи и собирал из них имя контейнера.\n\nЧасть строк стерта, но по выводу видно: именно этот скрипт должен привести команду к следующей улике.',
-    outcome:
-      'Парсер собирает метку NOVA-17.\n\nЭто имя контейнера, который запустился за минуту до исчезновения.',
     component: PythonChallenge,
   },
   {
     id: 'security',
     label: 'Безопасность',
-    title: 'Подозрительное письмо',
     icon: ShieldAlert,
     accent: '#ff5f9f',
     accentRgb: '255, 95, 159',
-    intro:
-      'Перед запуском NOVA-17 Орлов получил письмо якобы от службы безопасности.\n\nПисьмо выглядит правдоподобно, но в журнале рядом с ним есть странные события.\n\nКоманде нужно решить, было ли письмо обычным уведомлением или частью атаки.',
-    outcome:
-      'Письмо оказалось фишингом.\n\nНо Орлов открыл его не случайно: он запускал вложение в изолированной среде, чтобы поймать отправителя.',
     component: SecurityChallenge,
   },
   {
     id: 'network',
     label: 'Сети',
-    title: 'Маршрут сигнала',
     icon: Network,
     accent: '#6ea8ff',
     accentRgb: '110, 168, 255',
-    intro:
-      'После письма из лаборатории ушел короткий сетевой сигнал.\n\nОн не похож на обычную загрузку файла или вход в почту.\n\nВ сетевом журнале остались названия узлов, но порядок маршрута стерся.',
-    outcome:
-      'Сигнал ушел не в интернет, а во внутренний архивный кластер AURORA.\n\nСлед ведет к эксперименту внутри кампуса.',
     component: NetworkChallenge,
   },
   {
     id: 'workflow',
     label: 'Git-процесс',
-    title: 'След в командной разработке',
     icon: GitBranch,
     accent: '#b78cff',
     accentRgb: '183, 140, 255',
-    intro:
-      'На AURORA найден репозиторий с последним изменением Орлова.\n\nВ истории проекта есть след, который может открыть финальный лог.\n\nНо доступ к нему появится только после восстановления рабочего процесса команды.',
-    outcome:
-      'Финальный лог открыт: Орлов не исчез.\n\nОн перенес рабочую среду в изолированный контур, чтобы остановить утечку.\n\nТеперь его можно вернуть аварийным протоколом.',
     component: WorkflowChallenge,
   },
 ];
@@ -99,8 +87,14 @@ if (modules.some((module, index) => module.id !== MODULE_IDS[index])) {
   throw new Error('Порядок модулей в App.jsx не совпадает с MODULE_IDS в shared/quest.js');
 }
 
-// Даёт подсказкам текущего этапа доступ к счетчику и штрафу из сессии.
-const ChallengeContext = createContext({ hintsShown: 0, hintPenalty: 0, revealHint: () => {} });
+// Даёт заданиям текущего этапа доступ к уровню игрока, счетчику подсказок и штрафу из сессии.
+const ChallengeContext = createContext({
+  level: LEVELS.senior,
+  moduleId: 'sql',
+  hintsShown: 0,
+  hintPenalty: 0,
+  revealHint: () => {},
+});
 
 const logLines = [
   '[22:31] Орлов вошел в лабораторию',
@@ -110,7 +104,7 @@ const logLines = [
   '[22:50] маршрут к AURORA частично стерт',
 ];
 
-export default function App() {
+export default function App({ route = '' }) {
   const session = useQuestSession();
 
   if (session.status === 'loading') {
@@ -135,7 +129,9 @@ export default function App() {
   }
 
   if (!session.player) {
-    return <Registration onRegister={session.register} />;
+    return (
+      <Registration onRegister={session.register} presetLevel={LEVEL_IDS.includes(route) ? route : null} />
+    );
   }
 
   return <QuestGame key={session.player.id} session={session} />;
@@ -144,34 +140,39 @@ export default function App() {
 function QuestGame({ session }) {
   const { player, scoring, sendEvent } = session;
   const solved = player.solved;
-  const [active, setActive] = useState(() => Math.min(solved.length, modules.length - 1));
+  const level = LEVELS[player.level] ?? LEVELS.senior;
+  const levelModules = useMemo(() => modules.filter((item) => level.modules.includes(item.id)), [level]);
+  const [active, setActive] = useState(() => Math.min(solved.length, levelModules.length - 1));
   const [showBriefing, setShowBriefing] = useState(true);
   const [showResults, setShowResults] = useState(() => Boolean(player.finishedAt));
   const [readStories, setReadStories] = useState([]);
 
-  const module = modules[active];
+  const module = levelModules[active];
+  const story = storyFor(module.id, level.id);
   const ModuleIcon = module.icon;
   const Challenge = module.component;
   const isSolved = solved.includes(module.id);
-  const progress = Math.round((solved.length / modules.length) * 100);
+  const progress = Math.round((solved.length / levelModules.length) * 100);
 
   const unlocked = useMemo(() => {
-    return modules.map((item, index) => index === 0 || solved.includes(modules[index - 1].id));
-  }, [solved]);
+    return levelModules.map((item, index) => index === 0 || solved.includes(levelModules[index - 1].id));
+  }, [levelModules, solved]);
 
   const challengeContext = useMemo(
     () => ({
+      level,
+      moduleId: module.id,
       hintsShown: player.hints[module.id] ?? 0,
       hintPenalty: scoring.perHint,
       revealHint: () => sendEvent('hint', module.id),
     }),
-    [module.id, player.hints, scoring.perHint, sendEvent],
+    [level, module.id, player.hints, scoring.perHint, sendEvent],
   );
 
   function solveCurrent() {
     sendEvent('solve', module.id);
 
-    if (active < modules.length - 1) {
+    if (active < levelModules.length - 1) {
       setActive(active + 1);
     }
 
@@ -183,7 +184,7 @@ function QuestGame({ session }) {
   }
 
   function goNext() {
-    if (active < modules.length - 1) {
+    if (active < levelModules.length - 1) {
       setActive(active + 1);
       setShowBriefing(true);
     }
@@ -226,7 +227,7 @@ function QuestGame({ session }) {
         </div>
 
         <nav className="mission-nav" aria-label="Этапы квеста">
-          {modules.map((item, index) => {
+          {levelModules.map((item, index) => {
             const Icon = item.icon;
             const available = unlocked[index];
             const done = solved.includes(item.id);
@@ -263,8 +264,8 @@ function QuestGame({ session }) {
       <section className="stage">
         <header className="stage-header">
           <div>
-            <span className="eyebrow">{showResults ? 'Дело закрыто' : `Модуль ${active + 1} / ${modules.length}`}</span>
-            <h1>{showResults ? 'Итоги расследования' : module.title}</h1>
+            <span className="eyebrow">{showResults ? 'Дело закрыто' : `Модуль ${active + 1} / ${levelModules.length}`}</span>
+            <h1>{showResults ? 'Итоги расследования' : story.title}</h1>
           </div>
           <div className="module-token">
             {showResults ? <Trophy size={24} /> : <ModuleIcon size={24} />}
@@ -282,9 +283,10 @@ function QuestGame({ session }) {
         ) : showBriefing ? (
           <StoryInterlude
             key={`${module.id}-${isSolved ? 'outcome' : 'intro'}`}
-            module={module}
+            moduleId={module.id}
+            story={story}
             isSolved={isSolved}
-            isFinal={active === modules.length - 1}
+            isFinal={active === levelModules.length - 1}
             hasPlayed={readStories.includes(`${module.id}-${isSolved ? 'outcome' : 'intro'}`)}
             onRead={markStoryRead}
             onStart={() => setShowBriefing(false)}
@@ -317,7 +319,14 @@ function MissionStats({ session, onLogout }) {
           <LogOut size={16} />
         </button>
       </div>
+      <span className="mission-level">
+        Уровень «{LEVELS[player.level]?.name}» · {player.className} класс
+      </span>
       <div className="stat-row">
+        <span title="Очки">
+          <Star size={15} />
+          {player.score.total}
+        </span>
         <span title="Время">
           <Clock3 size={15} />
           {formatDuration(elapsed)}
@@ -341,9 +350,9 @@ function MissionStats({ session, onLogout }) {
   );
 }
 
-function StoryInterlude({ module, isSolved, isFinal, hasPlayed, onRead, onStart, onNext, onFinish }) {
-  const storyKey = `${module.id}-${isSolved ? 'outcome' : 'intro'}`;
-  const storyText = isSolved ? module.outcome : module.intro;
+function StoryInterlude({ moduleId, story, isSolved, isFinal, hasPlayed, onRead, onStart, onNext, onFinish }) {
+  const storyKey = `${moduleId}-${isSolved ? 'outcome' : 'intro'}`;
+  const storyText = isSolved ? story.outcome : story.intro;
   const paragraphs = useMemo(() => splitStory(storyText), [storyText]);
   const [typedParagraphs, setTypedParagraphs] = useState(() =>
     hasPlayed ? paragraphs : paragraphs.map(() => ''),
@@ -462,8 +471,9 @@ function ChallengeFrame({ solved, onBrief, children }) {
   );
 }
 
-function HintPanel({ hints }) {
-  const { hintsShown, hintPenalty, revealHint } = useContext(ChallengeContext);
+function HintPanel() {
+  const { level, moduleId, hintsShown, hintPenalty, revealHint } = useContext(ChallengeContext);
+  const hints = hintsFor(moduleId, level.id).slice(0, level.hintLimit);
   const visibleCount = Math.min(hintsShown, hints.length);
   const canReveal = visibleCount < hints.length;
 
@@ -587,13 +597,7 @@ function SqlChallenge({ onSolve, onMistake, solved }) {
 
   return (
     <div className="two-column challenge-area">
-      <HintPanel
-        hints={[
-          'Нужно узнать только место и терминал Орлова.',
-          'В поле "Кого ищем" выберите пользователя orlov.',
-          'Новые записи должны быть сверху, а строка нужна только одна.',
-        ]}
-      />
+      <HintPanel />
       <div className="workbench">
         <h2>Соберите запрос к журналу</h2>
         <div className="query-builder">
@@ -627,6 +631,7 @@ FROM access_log
 WHERE ${query.where}
 ORDER BY ${query.order}
 LIMIT ${query.limit};`}</pre>
+        <Glossary moduleId="sql" />
         <button
           className="primary-action"
           disabled={solved}
@@ -663,23 +668,41 @@ LIMIT ${query.limit};`}</pre>
   );
 }
 
+// Варианты — строки или объекты { value, label }, если подпись должна отличаться от значения.
 function QuerySelect({ label, value, options, onChange }) {
+  const items = options.map((option) => (typeof option === 'string' ? { value: option, label: option } : option));
+
   return (
     <label className="query-part">
       <span>{label}</span>
       <select value={value} onChange={(event) => onChange(event.target.value)}>
-        {!options.includes(value) && (
+        {!items.some((item) => item.value === value) && (
           <option value={value} disabled>
             Выберите вариант
           </option>
         )}
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
+        {items.map((item) => (
+          <option key={item.value} value={item.value}>
+            {item.label}
           </option>
         ))}
       </select>
     </label>
+  );
+}
+
+// Памятка к заданию; на уровне без памяток не показывается.
+function Glossary({ moduleId }) {
+  const { level } = useContext(ChallengeContext);
+  const items = level.glossary ? glossaryFor(moduleId, level.id) : [];
+  if (items.length === 0) return null;
+
+  return (
+    <div className="rule-note">
+      {items.map((item) => (
+        <span key={item}>{item}</span>
+      ))}
+    </div>
   );
 }
 
@@ -698,14 +721,7 @@ function PythonChallenge({ onSolve, onMistake, solved }) {
 
   return (
     <div className="two-column challenge-area">
-      <HintPanel
-        hints={[
-          'Нужные строки в журнале помечены словом TRACE.',
-          'Кусок метки стоит после code=.',
-          'В результате должны получиться две части: NOVA и 17.',
-          'Части нужно соединить через дефис.',
-        ]}
-      />
+      <HintPanel />
       <div className="workbench">
         <h2>Восстановите парсер логов</h2>
         <pre className="code-window">{`logs = [
@@ -741,12 +757,7 @@ print(${joiner})`}</pre>
           options={["''.join(parts)", "'-'.join(parts)", "','.join(parts)", "' '.join(parts)"]}
           onChange={setJoiner}
         />
-        <div className="rule-note">
-          <span>TRACE: строки служебной трассировки</span>
-          <span>code=: место, где спрятана часть метки</span>
-          <span>parts: список найденных кусочков</span>
-          <span>join: склеивает список в строку</span>
-        </div>
+        <Glossary moduleId="python" />
         <div className="terminal-output">
           <span>Вывод программы</span>
           <strong>{decoded}</strong>
@@ -776,16 +787,8 @@ print(${joiner})`}</pre>
 
 function SecurityChallenge({ onSolve, onMistake, solved }) {
   const [feedback, check] = useAnswerCheck(onSolve, onMistake);
-  const mailSignals = [
-    { label: 'В теме письма есть номер обращения', danger: false },
-    { label: 'Письмо пугает блокировкой через 15 минут', danger: true },
-    { label: 'В подписи указана должность сотрудника', danger: false },
-    { label: 'Адрес отправителя похож на настоящий, но написан с ошибкой', danger: true },
-    { label: 'Письмо начинается с вежливого обращения', danger: false },
-    { label: 'После письма был вход с незнакомого IP-адреса', danger: true },
-    { label: 'Нужно открыть архив с паролем из письма', danger: true },
-    { label: 'В письме есть вложение access_fix.zip', danger: true },
-  ];
+  const { level } = useContext(ChallengeContext);
+  const mailSignals = byLevel(SECURITY_SIGNALS, level.id);
   const dangerousSignals = mailSignals.filter((signal) => signal.danger).map((signal) => signal.label);
   const [selected, setSelected] = useState([]);
   const [action, setAction] = useState('delete');
@@ -800,15 +803,7 @@ function SecurityChallenge({ onSolve, onMistake, solved }) {
 
   return (
     <div className="two-column challenge-area">
-      <HintPanel
-        hints={[
-          'Сравните адрес отправителя с настоящим адресом вуза.',
-          'Срочность и угрозы блокировки часто используют в фишинге.',
-          'Вложение, которое просят срочно открыть, выглядит опасно.',
-          'Не все солидно выглядящие детали являются признаком атаки: подпись и номер обращения можно подделать.',
-          'После отметок выберите quarantine.',
-        ]}
-      />
+      <HintPanel />
       <div className="mail-view">
         <div className="mail-header">
           <LockKeyhole size={18} />
@@ -824,8 +819,9 @@ function SecurityChallenge({ onSolve, onMistake, solved }) {
           access_fix.zip
         </div>
         <div className="mini-log">
-          <code>22:49:07 вход с IP 185.17.44.9</code>
-          <code>22:49:21 запущена изолированная среда</code>
+          {byLevel(SECURITY_LOG, level.id).map((line) => (
+            <code key={line}>{line}</code>
+          ))}
         </div>
       </div>
       <div className="workbench">
@@ -846,15 +842,10 @@ function SecurityChallenge({ onSolve, onMistake, solved }) {
         <QuerySelect
           label="Что делать с письмом"
           value={action}
-          options={['delete', 'forward', 'quarantine', 'reply']}
+          options={byLevel(SECURITY_ACTIONS, level.id)}
           onChange={setAction}
         />
-        <div className="rule-note">
-          <span>delete: просто удалить</span>
-          <span>forward: переслать коллеге</span>
-          <span>quarantine: изолировать для анализа</span>
-          <span>reply: ответить отправителю</span>
-        </div>
+        <Glossary moduleId="security" />
         <button
           className="primary-action"
           disabled={selected.length === 0 || solved}
@@ -871,6 +862,9 @@ function SecurityChallenge({ onSolve, onMistake, solved }) {
 
 function NetworkChallenge({ onSolve, onMistake, solved }) {
   const [feedback, check] = useAnswerCheck(onSolve, onMistake);
+  const { level } = useContext(ChallengeContext);
+  const nodeLabels = NETWORK_NODE_LABELS[level.id] ?? {};
+  const labelOf = (node) => nodeLabels[node] ?? node;
   const nodes = ['ЛАБ-07', 'Коммутатор 2 этажа', 'Главный маршрутизатор', 'Защитный экран', 'AURORA'];
   const nodeLayout = {
     'ЛАБ-07': { x: '8%', y: '58%' },
@@ -890,14 +884,7 @@ function NetworkChallenge({ onSolve, onMistake, solved }) {
 
   return (
     <div className="network-layout challenge-area">
-      <HintPanel
-        hints={[
-          'Маршрут начинается с компьютера в лаборатории.',
-          'После компьютера сигнал обычно идет в коммутатор этажа.',
-          'Дальше идут главный маршрутизатор и защитный экран.',
-          'Последняя точка маршрута - AURORA.',
-        ]}
-      />
+      <HintPanel />
       <div className="topology">
         {nodes.map((node) => {
           const pickIndex = route.indexOf(node);
@@ -910,7 +897,7 @@ function NetworkChallenge({ onSolve, onMistake, solved }) {
           >
             {pickIndex >= 0 && <b className="pick-order">{pickIndex + 1}</b>}
             <Network size={22} />
-            <span>{node}</span>
+            <span>{labelOf(node)}</span>
           </button>
           );
         })}
@@ -921,17 +908,17 @@ function NetworkChallenge({ onSolve, onMistake, solved }) {
           {route.length === 0 && <span className="muted">Ожидаем первый узел</span>}
           {route.map((node, index) => (
             <span key={node}>
-              {node}
+              {labelOf(node)}
               {index < route.length - 1 && <ChevronRight size={16} />}
             </span>
           ))}
         </div>
         <div className="hint-grid">
-          <code>Шагов в маршруте: 5</code>
-          <code>Сегмент: лаборатория</code>
-          <code>Адрес цели: 10.17.0.77</code>
-          <code>Правило: только внутри кампуса</code>
+          {byLevel(NETWORK_FACTS, level.id).map((fact) => (
+            <code key={fact}>{fact}</code>
+          ))}
         </div>
+        <Glossary moduleId="network" />
         <div className="action-row">
           <button className="ghost-action" onClick={() => setRoute([])}>
             <RotateCcw size={16} />
@@ -975,15 +962,7 @@ function WorkflowChallenge({ onSolve, onMistake, solved }) {
 
   return (
     <div className="two-column challenge-area">
-      <HintPanel
-        hints={[
-          'Git - это журнал версий проекта. Он хранит историю изменений.',
-          'Коммит - сохраненная точка в истории: небольшой законченный кусок работы.',
-          'Обычно сначала создают задачу, потом ветку, потом коммит и тесты.',
-          'После тестов изменение отправляют на ревью, исправляют замечания и только потом сливают.',
-          'Настоящий токен нельзя хранить в коде. На ревью выберите remove-secret.',
-        ]}
-      />
+      <HintPanel />
       <div className="workbench">
         <h2>Разложите рабочий процесс по порядку</h2>
         <div className="step-pool">
@@ -1021,12 +1000,7 @@ function WorkflowChallenge({ onSolve, onMistake, solved }) {
           options={['approve-now', 'remove-secret', 'skip-tests', 'commit-to-main']}
           onChange={setReview}
         />
-        <div className="rule-note">
-          <span>approve-now: сразу одобрить</span>
-          <span>remove-secret: убрать секрет из кода</span>
-          <span>skip-tests: пропустить тесты</span>
-          <span>commit-to-main: писать сразу в main</span>
-        </div>
+        <Glossary moduleId="workflow" />
         <button
           className="primary-action"
           disabled={selected.length !== steps.length || !review || solved}

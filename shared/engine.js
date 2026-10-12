@@ -1,5 +1,5 @@
 // Правила квеста без привязки к хранилищу: используются сервером и локальным режимом в браузере.
-import { MODULE_IDS, computeScore, sumValues } from './quest.js';
+import { GRADES, LEVELS, LEVEL_IDS, compareResults, computeScore, sumValues } from './quest.js';
 import { generateNickname, isGeneratedNickname } from './nicknames.js';
 
 const EVENT_TYPES = new Set(['hint', 'mistake', 'solve']);
@@ -26,35 +26,55 @@ export function suggestNickname(players, exclude = '') {
   return generateNickname((name) => isNicknameTaken(players, name), exclude);
 }
 
-export function createPlayer(players, { nickname, members, school }, now = Date.now()) {
+// Записи, созданные до появления уровней, считаются уровнем «Тигр».
+export function levelOf(player) {
+  return LEVELS[player.level] ?? LEVELS.senior;
+}
+
+export function createPlayer(players, { nickname, grade, classLetter, level }, now = Date.now()) {
+  const gradeNumber = Number(grade);
+  if (!GRADES.includes(gradeNumber)) {
+    throw new QuestError(400, 'Выберите класс.');
+  }
+  if (!LEVEL_IDS.includes(level)) {
+    throw new QuestError(400, 'Выберите уровень сложности.');
+  }
+
   // Принимаем только позывной из словаря; если его успела занять другая команда — выдаем новый.
   const requested = String(nickname ?? '');
   const name =
     isGeneratedNickname(requested) && !isNicknameTaken(players, requested)
       ? requested
       : suggestNickname(players);
+  const letter = String(classLetter ?? '')
+    .trim()
+    .toUpperCase()
+    .match(/^[А-ЯЁA-Z]$/)?.[0] ?? '';
 
   return {
     id: randomHex(6),
     token: randomHex(24),
     team: name,
-    members: cleanText(members, 160),
-    school: cleanText(school, 60),
+    level,
+    grade: gradeNumber,
+    classLetter: letter,
     startedAt: now,
     finishedAt: null,
     solved: [],
-    mistakes: zeroCounters(),
-    hints: zeroCounters(),
+    mistakes: zeroCounters(LEVELS[level].modules),
+    hints: zeroCounters(LEVELS[level].modules),
     events: [],
   };
 }
 
 // Применяет событие к игроку. Возвращает true, если состояние изменилось.
 export function applyEvent(player, { eventId, type, module }, now = Date.now()) {
+  const level = levelOf(player);
+
   if (typeof eventId !== 'string' || eventId.length < 8 || eventId.length > 64) {
     throw new QuestError(400, 'Некорректный идентификатор события.');
   }
-  if (!EVENT_TYPES.has(type) || !MODULE_IDS.includes(module)) {
+  if (!EVENT_TYPES.has(type) || !level.modules.includes(module)) {
     throw new QuestError(400, 'Неизвестное событие.');
   }
 
@@ -63,20 +83,20 @@ export function applyEvent(player, { eventId, type, module }, now = Date.now()) 
     return false;
   }
 
-  const moduleIndex = MODULE_IDS.indexOf(module);
-  const isCurrent = moduleIndex === player.solved.length;
+  const isCurrent = level.modules.indexOf(module) === player.solved.length;
 
   if (type === 'solve') {
     if (!isCurrent) {
       throw new QuestError(409, 'Этапы нужно проходить по порядку.');
     }
     player.solved.push(module);
-    if (player.solved.length === MODULE_IDS.length) {
+    if (player.solved.length === level.modules.length) {
       player.finishedAt = now;
     }
-  } else if (isCurrent) {
-    const counters = type === 'hint' ? player.hints : player.mistakes;
-    counters[module] = (counters[module] ?? 0) + 1;
+  } else if (type === 'mistake' && isCurrent) {
+    player.mistakes[module] = (player.mistakes[module] ?? 0) + 1;
+  } else if (type === 'hint' && isCurrent && (player.hints[module] ?? 0) < level.hintLimit) {
+    player.hints[module] = (player.hints[module] ?? 0) + 1;
   }
 
   player.events.push(eventId);
@@ -86,8 +106,9 @@ export function applyEvent(player, { eventId, type, module }, now = Date.now()) 
   return true;
 }
 
-// Публичное представление участника: без токена и служебных полей.
+// Публичное представление участника: без токена и служебных полей. Очки считаются в любой момент игры.
 export function summarize(player, scoring, now = Date.now()) {
+  const level = levelOf(player);
   const elapsedMs = (player.finishedAt ?? now) - player.startedAt;
   const totalMistakes = sumValues(player.mistakes);
   const totalHints = sumValues(player.hints);
@@ -95,55 +116,53 @@ export function summarize(player, scoring, now = Date.now()) {
   return {
     id: player.id,
     team: player.team,
-    members: player.members,
-    school: player.school,
+    level: level.id,
+    grade: player.grade ?? null,
+    className: player.grade ? `${player.grade}${player.classLetter ?? ''}` : (player.school ?? ''),
     startedAt: player.startedAt,
     finishedAt: player.finishedAt,
+    status: player.finishedAt ? 'finished' : 'playing',
     elapsedMs,
+    modules: level.modules,
     solved: player.solved,
     mistakes: player.mistakes,
     hints: player.hints,
     totalMistakes,
     totalHints,
-    score: player.finishedAt
-      ? computeScore({ elapsedMs, mistakes: totalMistakes, hints: totalHints }, scoring)
-      : null,
+    score: computeScore(
+      { solvedCount: player.solved.length, mistakes: totalMistakes, hints: totalHints },
+      scoring,
+    ),
     place: null,
   };
 }
 
+// Рейтинг: отдельная таблица на каждый уровень, отсортированная по очкам.
 export function buildLeaderboard(players, scoring, now = Date.now()) {
-  const rows = players.map((player) => summarize(player, scoring, now));
-  const finished = rows
-    .filter((row) => row.finishedAt)
-    .sort((a, b) => b.score.total - a.score.total || a.elapsedMs - b.elapsedMs || a.finishedAt - b.finishedAt);
-  finished.forEach((row, index) => {
-    row.place = index + 1;
+  const levels = LEVEL_IDS.map((id) => {
+    const rows = players
+      .filter((player) => levelOf(player).id === id)
+      .map((player) => summarize(player, scoring, now))
+      .sort(compareResults);
+    rows.forEach((row, index) => {
+      row.place = index + 1;
+    });
+    return { id, rows };
   });
 
-  const inProgress = rows
-    .filter((row) => !row.finishedAt)
-    .sort((a, b) => b.solved.length - a.solved.length || a.startedAt - b.startedAt);
-
-  return { finished, inProgress };
+  return { levels };
 }
 
 export function summarizeWithPlace(players, player, scoring, now = Date.now()) {
-  const row = summarize(player, scoring, now);
-  if (row.finishedAt) {
-    row.place = buildLeaderboard(players, scoring, now).finished.findIndex((item) => item.id === row.id) + 1;
-  }
-  return row;
+  const level = levelOf(player).id;
+  const rows = buildLeaderboard(players, scoring, now).levels.find((item) => item.id === level).rows;
+  return rows.find((row) => row.id === player.id);
 }
 
-function zeroCounters() {
-  return Object.fromEntries(MODULE_IDS.map((id) => [id, 0]));
+export function allRows(leaderboard) {
+  return leaderboard.levels.flatMap((level) => level.rows);
 }
 
-function cleanText(value, maxLength) {
-  return String(value ?? '')
-    .replace(/[\u0000-\u001f\u007f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, maxLength);
+function zeroCounters(modules) {
+  return Object.fromEntries(modules.map((id) => [id, 0]));
 }

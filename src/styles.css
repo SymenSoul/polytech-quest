@@ -1287,3 +1287,131 @@ a.ghost-action {
     display: grid;
   }
 }
+
+/* Класс, уровни сложности и вкладки рейтинга */
+
+.class-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.choice-row {
+  display: flex;
+  gap: 8px;
+}
+
+.choice-chip {
+  min-width: 52px;
+  min-height: 44px;
+  border: 1px solid rgba(237, 247, 255, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+  color: #edf7ff;
+  font-size: 1.1rem;
+  font-weight: 850;
+}
+
+.choice-chip.selected,
+.level-card.selected,
+.level-tab.selected {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.16);
+  box-shadow: 0 0 18px rgba(var(--accent-rgb), 0.22);
+}
+
+.gate-form .letter-input {
+  width: 92px;
+  text-align: center;
+}
+
+.level-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.level-card {
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid rgba(237, 247, 255, 0.14);
+  background: rgba(255, 255, 255, 0.035);
+  color: #c3d3e1;
+  text-align: left;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.level-card svg {
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.level-card strong {
+  color: #edf7ff;
+  font-size: 1.1rem;
+}
+
+.level-card .level-difficulty {
+  color: var(--accent);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.level-card em {
+  margin-top: 4px;
+  color: #ffdd55;
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.mission-level {
+  color: #9fb4c8;
+  font-size: 0.8rem;
+}
+
+.level-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.level-tab {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border: 1px solid rgba(237, 247, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: #dcecff;
+  font-weight: 850;
+}
+
+.level-tab span {
+  min-width: 24px;
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #9fb4c8;
+  font-size: 0.78rem;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border: 1px solid rgba(237, 247, 255, 0.16);
+  color: #9fb4c8;
+  font-size: 0.78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.status-finished {
+  border-color: rgba(41, 240, 200, 0.5);
+  color: #29f0c8;
+}

@@ -19,8 +19,7 @@ const DATA_FILE = path.resolve(root, process.env.DATA_FILE || 'data/results.json
 const ADMIN_KEY = process.env.ADMIN_KEY || randomBytes(4).toString('hex');
 
 const scoring = {
-  base: numberFromEnv('SCORE_BASE', DEFAULT_SCORING.base),
-  perMinute: numberFromEnv('PENALTY_MINUTE', DEFAULT_SCORING.perMinute),
+  perTask: numberFromEnv('POINTS_PER_TASK', DEFAULT_SCORING.perTask),
   perMistake: numberFromEnv('PENALTY_MISTAKE', DEFAULT_SCORING.perMistake),
   perHint: numberFromEnv('PENALTY_HINT', DEFAULT_SCORING.perHint),
 };

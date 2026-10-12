@@ -1,43 +1,51 @@
-import { MODULE_IDS, MODULE_LABELS, formatDuration } from './quest.js';
+import { allRows } from './engine.js';
+import { LEVELS, MODULE_IDS, MODULE_LABELS, formatDuration } from './quest.js';
+
+const STATUS_LABELS = {
+  playing: 'в процессе',
+  finished: 'завершил',
+};
 
 // Таблица результатов в CSV для Excel: BOM и точка с запятой, чтобы русский Excel открыл файл без мастера импорта.
-export function buildResultsCsv({ finished, inProgress }) {
+export function buildResultsCsv(leaderboard) {
   const header = [
+    'Уровень',
     'Место',
-    'Команда',
-    'Участники',
-    'Школа / класс',
+    'Позывной',
+    'Класс',
     'Статус',
-    'Этапов пройдено',
+    'Решено заданий',
     'Время',
     'Время, сек',
     'Ошибки',
     'Подсказки',
-    'Штраф за время',
+    'Очки за задания',
     'Штраф за ошибки',
     'Штраф за подсказки',
-    'Баллы',
+    'Очки',
     ...MODULE_IDS.flatMap((id) => [`Ошибки: ${MODULE_LABELS[id]}`, `Подсказки: ${MODULE_LABELS[id]}`]),
     'Начало',
     'Окончание',
   ];
 
-  const rows = [...finished, ...inProgress].map((row) => [
+  const rows = allRows(leaderboard).map((row) => [
+    LEVELS[row.level].name,
     row.place ?? '',
     row.team,
-    row.members,
-    row.school,
-    row.finishedAt ? 'завершил' : 'в процессе',
-    `${row.solved.length}/${MODULE_IDS.length}`,
+    row.className,
+    STATUS_LABELS[row.status] ?? row.status,
+    `${row.solved.length}/${row.modules.length}`,
     formatDuration(row.elapsedMs),
     Math.round(row.elapsedMs / 1000),
     row.totalMistakes,
     row.totalHints,
-    row.score?.timePenalty ?? '',
-    row.score?.mistakePenalty ?? '',
-    row.score?.hintPenalty ?? '',
-    row.score?.total ?? '',
-    ...MODULE_IDS.flatMap((id) => [row.mistakes[id] ?? 0, row.hints[id] ?? 0]),
+    row.score.taskPoints,
+    row.score.mistakePenalty,
+    row.score.hintPenalty,
+    row.score.total,
+    ...MODULE_IDS.flatMap((id) =>
+      row.modules.includes(id) ? [row.mistakes[id] ?? 0, row.hints[id] ?? 0] : ['', ''],
+    ),
     formatDate(row.startedAt),
     row.finishedAt ? formatDate(row.finishedAt) : '',
   ]);

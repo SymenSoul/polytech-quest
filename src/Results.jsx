@@ -1,22 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import {
-  Clock3,
-  Download,
-  KeyRound,
-  Lightbulb,
-  Medal,
-  RotateCcw,
-  TerminalSquare,
-  Trash2,
-  Trophy,
-  Users,
-  XCircle,
-} from 'lucide-react';
-import { MODULE_IDS, formatDuration } from '../shared/quest.js';
+import { Download, KeyRound, Lightbulb, Medal, RotateCcw, Star, TerminalSquare, Trash2, XCircle } from 'lucide-react';
+import { LEVELS, LEVEL_IDS, formatDuration } from '../shared/quest.js';
 import { request, useNow } from './api.js';
-import { ScoringRules } from './Registration.jsx';
+import { LEVEL_ICONS, ScoringRules } from './Registration.jsx';
 
 const ADMIN_KEY_STORAGE = 'polytech-quest-admin-key';
+
+const STATUS_LABELS = {
+  playing: 'в игре',
+  finished: 'финиш',
+};
 
 function useLeaderboard(intervalMs = 5000) {
   const [board, setBoard] = useState(null);
@@ -43,13 +36,45 @@ function useLeaderboard(intervalMs = 5000) {
   return { board, clockOffset, error, refresh };
 }
 
-// Итоги команды после финального этапа.
+function levelRows(board, levelId) {
+  return board?.levels.find((item) => item.id === levelId)?.rows ?? [];
+}
+
+export function ScoreBreakdown({ player, scoring }) {
+  const { score } = player;
+
+  return (
+    <dl className="score-breakdown">
+      <div>
+        <dt>
+          <Star size={16} /> Решено заданий: {player.solved.length} из {player.modules.length}
+        </dt>
+        <dd>+{score.taskPoints}</dd>
+      </div>
+      <div>
+        <dt>
+          <XCircle size={16} /> Ошибки: {player.totalMistakes} × {scoring.perMistake}
+        </dt>
+        <dd>−{score.mistakePenalty}</dd>
+      </div>
+      <div>
+        <dt>
+          <Lightbulb size={16} /> Подсказки: {player.totalHints} × {scoring.perHint}
+        </dt>
+        <dd>−{score.hintPenalty}</dd>
+      </div>
+    </dl>
+  );
+}
+
+// Итоги участника после финального этапа.
 export function FinalResults({ player, scoring, offline, onNewTeam }) {
-  const { board } = useLeaderboard();
-  const score = player.score;
+  const { board, clockOffset } = useLeaderboard();
+  const level = LEVELS[player.level];
+  const waiting = player.status === 'playing';
 
   function startNewTeam() {
-    if (window.confirm('Результат команды сохранен. Перейти к регистрации новой команды?')) {
+    if (window.confirm('Результат сохранён. Перейти к регистрации нового участника?')) {
       onNewTeam();
     }
   }
@@ -57,62 +82,34 @@ export function FinalResults({ player, scoring, offline, onNewTeam }) {
   return (
     <div className="results-stage">
       <div className="result-card">
-        {score ? (
-          <>
-            <div className="result-score">
-              <span className="eyebrow">Итог команды «{player.team}»</span>
-              <strong>{score.total}</strong>
-              <span>баллов{player.place ? ` · ${player.place} место` : ''}</span>
-            </div>
-            <dl className="score-breakdown">
-              <div>
-                <dt>
-                  <Trophy size={16} /> Стартовый запас
-                </dt>
-                <dd>+{score.base}</dd>
-              </div>
-              <div>
-                <dt>
-                  <Clock3 size={16} /> Время {formatDuration(player.elapsedMs)}
-                </dt>
-                <dd>−{score.timePenalty}</dd>
-              </div>
-              <div>
-                <dt>
-                  <XCircle size={16} /> Ошибки: {player.totalMistakes}
-                </dt>
-                <dd>−{score.mistakePenalty}</dd>
-              </div>
-              <div>
-                <dt>
-                  <Lightbulb size={16} /> Подсказки: {player.totalHints}
-                </dt>
-                <dd>−{score.hintPenalty}</dd>
-              </div>
-            </dl>
-          </>
-        ) : (
-          <div className="result-score">
-            <span className="eyebrow">Итог команды «{player.team}»</span>
-            <span className="muted">
-              {offline ? 'Нет связи с сервером. Результат отправится автоматически...' : 'Подсчитываем результат...'}
-            </span>
-          </div>
-        )}
+        <div className="result-score">
+          <span className="eyebrow">
+            «{player.team}» · уровень «{level.name}» · {formatDuration(player.elapsedMs)}
+          </span>
+          <strong>{player.score.total}</strong>
+          <span>
+            {waiting
+              ? offline
+                ? 'Нет связи с сервером. Результат отправится автоматически...'
+                : 'Подсчитываем результат...'
+              : `очков · ${player.place} место на уровне «${level.name}»`}
+          </span>
+        </div>
+        <ScoreBreakdown player={player} scoring={scoring} />
         <ScoringRules scoring={scoring} />
         <button className="primary-action" onClick={startNewTeam}>
           <RotateCcw size={18} />
-          Новая команда
+          Новый участник
         </button>
       </div>
 
       <div className="data-table">
         <div className="panel-title">
           <Medal size={16} />
-          Таблица результатов
+          Рейтинг уровня «{level.name}»
         </div>
         {board ? (
-          <FinishedTable rows={board.finished} highlightId={player.id} />
+          <LeaderboardTable rows={levelRows(board, player.level)} clockOffset={clockOffset} highlightId={player.id} />
         ) : (
           <p className="muted">Загружаем таблицу...</p>
         )}
@@ -124,9 +121,13 @@ export function FinalResults({ player, scoring, offline, onNewTeam }) {
 // Отдельная страница /results — для проектора и организаторов.
 export function ResultsPage() {
   const { board, clockOffset, error, refresh } = useLeaderboard();
+  const [tab, setTab] = useState(null);
   const [adminKey, setAdminKey] = useState(() => readAdminKey());
   const [keyInput, setKeyInput] = useState('');
   const [adminError, setAdminError] = useState('');
+
+  // По умолчанию открываем первый уровень, где уже есть участники.
+  const activeTab = tab ?? LEVEL_IDS.find((id) => levelRows(board, id).length > 0) ?? 'senior';
 
   async function login(event) {
     event.preventDefault();
@@ -157,7 +158,7 @@ export function ResultsPage() {
   }
 
   const onDelete = adminKey
-    ? (row) => adminAction(`/api/players/${row.id}`, `Удалить команду «${row.team}» из таблицы?`)
+    ? (row) => adminAction(`/api/players/${row.id}`, `Удалить «${row.team}» из таблицы?`)
     : null;
 
   return (
@@ -175,29 +176,36 @@ export function ResultsPage() {
         </div>
         <a className="ghost-action" href="/api/results.csv">
           <Download size={16} />
-          Скачать CSV
+          Скачать CSV для Excel
         </a>
       </header>
 
-      <h1>Таблица результатов</h1>
+      <h1>Рейтинг</h1>
       {error && <p className="answer-feedback">{error}</p>}
 
       {board && (
         <>
-          <section className="data-table">
-            <div className="panel-title">
-              <Medal size={16} />
-              Завершили расследование: {board.finished.length}
-            </div>
-            <FinishedTable rows={board.finished} onDelete={onDelete} />
-          </section>
+          <div className="level-tabs" role="tablist" aria-label="Уровни">
+            {LEVEL_IDS.map((id) => {
+              const Icon = LEVEL_ICONS[id];
+              return (
+                <button
+                  key={id}
+                  role="tab"
+                  aria-selected={activeTab === id}
+                  className={`level-tab ${activeTab === id ? 'selected' : ''}`}
+                  onClick={() => setTab(id)}
+                >
+                  <Icon size={16} />
+                  {LEVELS[id].name}
+                  <span>{levelRows(board, id).length}</span>
+                </button>
+              );
+            })}
+          </div>
 
           <section className="data-table">
-            <div className="panel-title">
-              <Users size={16} />
-              В процессе: {board.inProgress.length}
-            </div>
-            <InProgressTable rows={board.inProgress} clockOffset={clockOffset} onDelete={onDelete} />
+            <LeaderboardTable rows={levelRows(board, activeTab)} clockOffset={clockOffset} onDelete={onDelete} />
           </section>
 
           <ScoringRules scoring={board.scoring} />
@@ -247,9 +255,11 @@ export function ResultsPage() {
   );
 }
 
-function FinishedTable({ rows, highlightId, onDelete }) {
+function LeaderboardTable({ rows, clockOffset, highlightId, onDelete }) {
+  const now = useNow() + clockOffset;
+
   if (rows.length === 0) {
-    return <p className="muted">Пока ни одна команда не завершила квест.</p>;
+    return <p className="muted">На этом уровне пока нет участников.</p>;
   }
 
   return (
@@ -258,11 +268,13 @@ function FinishedTable({ rows, highlightId, onDelete }) {
         <thead>
           <tr>
             <th>Место</th>
-            <th>Команда</th>
+            <th>Позывной</th>
+            <th>Статус</th>
+            <th>Задания</th>
             <th>Время</th>
             <th>Ошибки</th>
             <th>Подсказки</th>
-            <th>Баллы</th>
+            <th>Очки</th>
             {onDelete && <th />}
           </tr>
         </thead>
@@ -270,76 +282,32 @@ function FinishedTable({ rows, highlightId, onDelete }) {
           {rows.map((row) => (
             <tr key={row.id} className={row.id === highlightId ? 'highlight' : ''}>
               <td className={`place place-${row.place}`}>{row.place}</td>
-              <TeamCell row={row} />
-              <td>{formatDuration(row.elapsedMs)}</td>
+              <td className="team-cell">
+                <strong>{row.team}</strong>
+                {row.className && <span>{row.className} класс</span>}
+              </td>
+              <td>
+                <span className={`status-badge status-${row.status}`}>{STATUS_LABELS[row.status] ?? row.status}</span>
+              </td>
+              <td>
+                {row.solved.length} / {row.modules.length}
+              </td>
+              <td>{formatDuration(row.status === 'playing' ? now - row.startedAt : row.elapsedMs)}</td>
               <td>{row.totalMistakes}</td>
               <td>{row.totalHints}</td>
               <td className="score-cell">{row.score.total}</td>
-              {onDelete && <DeleteCell row={row} onDelete={onDelete} />}
+              {onDelete && (
+                <td>
+                  <button className="icon-action" title="Удалить из таблицы" onClick={() => onDelete(row)}>
+                    <Trash2 size={16} />
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
       </table>
     </div>
-  );
-}
-
-function InProgressTable({ rows, clockOffset, onDelete }) {
-  const now = useNow() + clockOffset;
-
-  if (rows.length === 0) {
-    return <p className="muted">Сейчас никто не проходит квест.</p>;
-  }
-
-  return (
-    <div className="table-scroll">
-      <table className="leaderboard">
-        <thead>
-          <tr>
-            <th>Команда</th>
-            <th>Этап</th>
-            <th>Время</th>
-            <th>Ошибки</th>
-            <th>Подсказки</th>
-            {onDelete && <th />}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.id}>
-              <TeamCell row={row} />
-              <td>
-                {row.solved.length + 1} / {MODULE_IDS.length}
-              </td>
-              <td>{formatDuration(now - row.startedAt)}</td>
-              <td>{row.totalMistakes}</td>
-              <td>{row.totalHints}</td>
-              {onDelete && <DeleteCell row={row} onDelete={onDelete} />}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function TeamCell({ row }) {
-  const details = [row.members, row.school].filter(Boolean).join(' · ');
-  return (
-    <td className="team-cell">
-      <strong>{row.team}</strong>
-      {details && <span>{details}</span>}
-    </td>
-  );
-}
-
-function DeleteCell({ row, onDelete }) {
-  return (
-    <td>
-      <button className="icon-action" title="Удалить из таблицы" onClick={() => onDelete(row)}>
-        <Trash2 size={16} />
-      </button>
-    </td>
   );
 }
 

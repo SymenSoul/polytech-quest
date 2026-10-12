@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { DEFAULT_SCORING } from '../shared/quest.js';
+import { DEFAULT_SCORING, computeScore } from '../shared/quest.js';
 import { randomId, request, tokenStorage } from './api.js';
 
 const RETRY_DELAY_MS = 2000;
@@ -14,6 +14,8 @@ export function useQuestSession() {
   const tokenRef = useRef(tokenStorage.read());
   const queueRef = useRef([]);
   const flushingRef = useRef(false);
+  const scoringRef = useRef(scoring);
+  scoringRef.current = scoring;
 
   const accept = useCallback((data) => {
     setPlayer(data.player);
@@ -82,7 +84,7 @@ export function useQuestSession() {
 
   const sendEvent = useCallback(
     (type, module) => {
-      setPlayer((current) => current && applyLocally(current, type, module));
+      setPlayer((current) => current && applyLocally(current, type, module, scoringRef.current));
       queueRef.current.push({ eventId: randomId(), type, module });
       flush();
     },
@@ -110,16 +112,24 @@ export function useQuestSession() {
   return { status, player, scoring, clockOffset, offline, reload, register, sendEvent, logout };
 }
 
-function applyLocally(player, type, module) {
+// Мгновенно показываем результат действия, не дожидаясь сервера; его ответ потом заменит эти данные.
+function applyLocally(player, type, module, scoring) {
+  let next;
   if (type === 'solve') {
-    return player.solved.includes(module) ? player : { ...player, solved: [...player.solved, module] };
+    next = player.solved.includes(module) ? player : { ...player, solved: [...player.solved, module] };
+  } else {
+    const key = type === 'hint' ? 'hints' : 'mistakes';
+    const totalKey = type === 'hint' ? 'totalHints' : 'totalMistakes';
+    next = {
+      ...player,
+      [key]: { ...player[key], [module]: (player[key][module] ?? 0) + 1 },
+      [totalKey]: player[totalKey] + 1,
+    };
   }
 
-  const key = type === 'hint' ? 'hints' : 'mistakes';
-  const totalKey = type === 'hint' ? 'totalHints' : 'totalMistakes';
-  return {
-    ...player,
-    [key]: { ...player[key], [module]: (player[key][module] ?? 0) + 1 },
-    [totalKey]: player[totalKey] + 1,
-  };
+  const score = computeScore(
+    { solvedCount: next.solved.length, mistakes: next.totalMistakes, hints: next.totalHints },
+    scoring,
+  );
+  return { ...next, score };
 }

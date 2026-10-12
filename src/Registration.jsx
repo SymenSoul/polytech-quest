@@ -1,11 +1,27 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Clock3, Lightbulb, Play, RefreshCw, TerminalSquare, Trophy, XCircle } from 'lucide-react';
-import { DEFAULT_SCORING } from '../shared/quest.js';
+import {
+  Cat,
+  Flame,
+  Lightbulb,
+  PawPrint,
+  Play,
+  RefreshCw,
+  Star,
+  TerminalSquare,
+  Trophy,
+  XCircle,
+} from 'lucide-react';
+import { DEFAULT_SCORING, GRADES, LEVELS, LEVEL_IDS, recommendedLevel } from '../shared/quest.js';
 import { request } from './api.js';
 
-export default function Registration({ onRegister }) {
-  const [form, setForm] = useState({ members: '', school: '' });
+export const LEVEL_ICONS = { junior: PawPrint, senior: Cat, expert: Flame };
+
+export default function Registration({ onRegister, presetLevel }) {
   const [nickname, setNickname] = useState('');
+  const [grade, setGrade] = useState(null);
+  const [classLetter, setClassLetter] = useState('');
+  const [level, setLevel] = useState(presetLevel ?? null);
+  const [levelChosen, setLevelChosen] = useState(Boolean(presetLevel));
   const [scoring, setScoring] = useState(DEFAULT_SCORING);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -27,21 +43,33 @@ export default function Registration({ onRegister }) {
       .catch(() => {});
   }, [rollNickname]);
 
+  function chooseGrade(value) {
+    setGrade(value);
+    // Пока участник сам не выбрал уровень, подставляем рекомендованный для его класса.
+    if (!levelChosen) setLevel(recommendedLevel(value));
+  }
+
+  function chooseLevel(value) {
+    setLevel(value);
+    setLevelChosen(true);
+  }
+
   async function submit(event) {
     event.preventDefault();
+    if (!grade) {
+      setError('Выберите свой класс.');
+      return;
+    }
+
     setBusy(true);
     setError('');
     try {
-      // Если позывной успели занять, сервер выдаст другой — он появится в панели команды.
-      await onRegister({ ...form, nickname });
+      // Если позывной успели занять, сервер выдаст другой — он появится в панели участника.
+      await onRegister({ nickname, grade, classLetter, level });
     } catch (registerError) {
       setError(registerError.message);
       setBusy(false);
     }
-  }
-
-  function update(field) {
-    return (event) => setForm({ ...form, [field]: event.target.value });
   }
 
   return (
@@ -59,17 +87,17 @@ export default function Registration({ onRegister }) {
         </div>
 
         <div className="gate-copy">
-          <span className="eyebrow">Регистрация следственной группы</span>
+          <span className="eyebrow">Регистрация следователя</span>
           <h1>Исчезновение цифрового гения</h1>
           <p>
-            Вашей команде выдан позывной — под ним она появится в таблице результатов. Таймер запустится
-            сразу после нажатия кнопки «Начать расследование».
+            Вам выдан позывной — под ним вы появитесь в таблице результатов. Выберите класс и уровень
+            сложности. Таймер запустится после кнопки «Начать расследование».
           </p>
         </div>
 
         <form className="gate-form" onSubmit={submit}>
           <div className="query-part">
-            <span>Позывной команды</span>
+            <span>Позывной</span>
             <div className="nickname-row">
               <strong className="nickname" aria-live="polite">
                 {nickname || 'Подбираем позывной...'}
@@ -85,26 +113,48 @@ export default function Registration({ onRegister }) {
               </button>
             </div>
           </div>
-          <label className="query-part">
-            <span>Участники (необязательно)</span>
-            <input
-              className="answer-input"
-              value={form.members}
-              onChange={update('members')}
-              maxLength={160}
-              placeholder="Имена через запятую"
-            />
-          </label>
-          <label className="query-part">
-            <span>Школа и класс (необязательно)</span>
-            <input
-              className="answer-input"
-              value={form.school}
-              onChange={update('school')}
-              maxLength={60}
-              placeholder="Например: Школа 239, 9Б"
-            />
-          </label>
+
+          <div className="query-part">
+            <span>Класс *</span>
+            <div className="class-row">
+              <div className="choice-row" role="radiogroup" aria-label="Класс">
+                {GRADES.map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={grade === value}
+                    className={`choice-chip ${grade === value ? 'selected' : ''}`}
+                    onClick={() => chooseGrade(value)}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+              <input
+                className="answer-input letter-input"
+                value={classLetter}
+                onChange={(event) => setClassLetter(event.target.value.slice(-1).toUpperCase())}
+                placeholder="Буква"
+                aria-label="Буква класса (необязательно)"
+              />
+            </div>
+          </div>
+
+          <div className="query-part">
+            <span>Уровень сложности</span>
+            <div className="level-grid" role="radiogroup" aria-label="Уровень сложности">
+              {LEVEL_IDS.filter((id) => !presetLevel || id === presetLevel).map((id) => (
+                <LevelCard
+                  key={id}
+                  level={LEVELS[id]}
+                  selected={level === id}
+                  recommended={grade !== null && recommendedLevel(grade) === id}
+                  onSelect={() => chooseLevel(id)}
+                />
+              ))}
+            </div>
+          </div>
 
           {error && (
             <p className="answer-feedback" role="alert">
@@ -113,7 +163,7 @@ export default function Registration({ onRegister }) {
             </p>
           )}
 
-          <button className="primary-action" type="submit" disabled={busy || !nickname}>
+          <button className="primary-action" type="submit" disabled={busy || !nickname || !grade || !level}>
             <Play size={18} />
             {busy ? 'Регистрируем...' : 'Начать расследование'}
           </button>
@@ -125,21 +175,38 @@ export default function Registration({ onRegister }) {
   );
 }
 
+function LevelCard({ level, selected, recommended, onSelect }) {
+  const Icon = LEVEL_ICONS[level.id];
+
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      aria-label={`${level.name}: ${level.difficulty}, ${level.description}`}
+      className={`level-card ${selected ? 'selected' : ''}`}
+      onClick={onSelect}
+    >
+      <Icon size={26} />
+      <strong>{level.name}</strong>
+      <span className="level-difficulty">{level.difficulty}</span>
+      <span>{level.description}</span>
+      {recommended && <em>рекомендуем для вашего класса</em>}
+    </button>
+  );
+}
+
 export function ScoringRules({ scoring }) {
   return (
     <div className="scoring-rules">
       <div className="panel-title">
         <Trophy size={16} />
-        Как считаются баллы
+        Как считаются очки
       </div>
       <ul>
         <li>
-          <Trophy size={15} />
-          Старт: <strong>{scoring.base}</strong> баллов
-        </li>
-        <li>
-          <Clock3 size={15} />
-          <strong>−{scoring.perMinute}</strong> за каждую минуту
+          <Star size={15} />
+          <strong>+{scoring.perTask}</strong> за решённое задание
         </li>
         <li>
           <XCircle size={15} />
@@ -148,6 +215,10 @@ export function ScoringRules({ scoring }) {
         <li>
           <Lightbulb size={15} />
           <strong>−{scoring.perHint}</strong> за подсказку
+        </li>
+        <li>
+          <Trophy size={15} />
+          при равных очках выше тот, кто быстрее
         </li>
       </ul>
     </div>

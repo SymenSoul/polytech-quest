@@ -2,6 +2,7 @@ import { Component, StrictMode, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import { ResultsPage } from './Results.jsx';
+import { currentRoute } from './routes.js';
 import './styles.css';
 
 class ErrorBoundary extends Component {
@@ -28,12 +29,16 @@ class ErrorBoundary extends Component {
   }
 }
 
-const isResultsPage = window.location.pathname.replace(/\/+$/, '') === '/results';
+const route = currentRoute();
+const page = route === 'results' ? createElement(ResultsPage) : createElement(App, { route });
+
+// Переход между маршрутами внутри файла (#/…) — просто перезагружаем страницу.
+window.addEventListener('hashchange', () => window.location.reload());
 
 createRoot(document.getElementById('root')).render(
   createElement(
     StrictMode,
     null,
-    createElement(ErrorBoundary, null, createElement(isResultsPage ? ResultsPage : App)),
+    createElement(ErrorBoundary, null, page),
   ),
 );

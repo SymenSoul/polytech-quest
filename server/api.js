@@ -1,13 +1,13 @@
 import { timingSafeEqual } from 'node:crypto';
 import { buildResultsCsv } from '../shared/csv.js';
-import { MODULE_IDS } from '../shared/quest.js';
+import { LEVELS } from '../shared/quest.js';
 import { HttpError } from './store.js';
 
 const MAX_BODY_BYTES = 16 * 1024;
 
 export function createApi(store, { adminKey, scoring }) {
   const routes = {
-    'GET /api/config': () => ({ scoring, modules: MODULE_IDS }),
+    'GET /api/config': () => ({ mode: 'server', scoring, levels: LEVELS }),
 
     'GET /api/nickname': (req, url) => ({ nickname: store.suggestNickname(url.searchParams.get('exclude') ?? '') }),
 

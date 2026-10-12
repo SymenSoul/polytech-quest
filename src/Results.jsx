@@ -1,8 +1,20 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Download, KeyRound, Lightbulb, Medal, RotateCcw, Star, TerminalSquare, Trash2, XCircle } from 'lucide-react';
+import {
+  Download,
+  KeyRound,
+  Lightbulb,
+  Medal,
+  RotateCcw,
+  Star,
+  TerminalSquare,
+  Trash2,
+  UserRound,
+  XCircle,
+} from 'lucide-react';
 import { DEFAULT_SETTINGS, LEVELS, LEVEL_IDS, STATUS_LABELS, formatDuration } from '../shared/quest.js';
 import { request, useNow } from './api.js';
 import { LEVEL_ICONS, ScoringRules } from './Registration.jsx';
+import { routeHref } from './routes.js';
 
 const ADMIN_KEY_STORAGE = 'polytech-quest-admin-key';
 
@@ -80,7 +92,11 @@ export function FinalResults({ player, scoring, offline, onNewTeam }) {
   const level = LEVELS[player.level];
 
   function startNewTeam() {
-    if (window.confirm('Результат сохранён. Перейти к регистрации нового участника?')) {
+    if (
+      window.confirm(
+        'Результат сохранён: его можно открыть на странице «Мой результат». Перейти к регистрации нового участника?',
+      )
+    ) {
       onNewTeam();
     }
   }
@@ -102,10 +118,16 @@ export function FinalResults({ player, scoring, offline, onNewTeam }) {
         </div>
         <ScoreBreakdown player={player} scoring={scoring} />
         <ScoringRules scoring={scoring} />
-        <button className="primary-action" onClick={startNewTeam}>
-          <RotateCcw size={18} />
-          Новый участник
-        </button>
+        <div className="action-row result-actions">
+          <a className="ghost-action" href={routeHref('me')} target="_blank" rel="noreferrer">
+            <UserRound size={16} />
+            Мой результат
+          </a>
+          <button className="primary-action" onClick={startNewTeam}>
+            <RotateCcw size={18} />
+            Новый участник
+          </button>
+        </div>
       </div>
 
       <div className="data-table">

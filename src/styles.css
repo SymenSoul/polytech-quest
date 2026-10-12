@@ -1185,7 +1185,8 @@ th {
   align-items: center;
 }
 
-a.ghost-action {
+a.ghost-action,
+a.primary-action {
   text-decoration: none;
 }
 
@@ -1466,4 +1467,51 @@ a.ghost-action {
   color: var(--accent);
   font-size: 0.72rem;
   text-transform: uppercase;
+}
+
+/* Страница «Мой результат» */
+
+.my-result-link {
+  min-height: 36px;
+  font-size: 0.86rem;
+}
+
+.result-actions {
+  flex-wrap: wrap;
+}
+
+.big-stats span {
+  font-size: 1.1rem;
+}
+
+.task-list {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.task-list li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 2px 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(237, 247, 255, 0.1);
+  color: #8da5bb;
+}
+
+.task-list li span {
+  grid-column: 2;
+  font-size: 0.8rem;
+}
+
+.task-list li.done {
+  border-color: rgba(41, 240, 200, 0.4);
+  color: #29f0c8;
+}
+
+.task-list li strong {
+  color: #edf7ff;
 }

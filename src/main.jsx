@@ -2,6 +2,7 @@ import { Component, StrictMode, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import { ResultsPage } from './Results.jsx';
+import { MyResultPage } from './MyResult.jsx';
 import { currentRoute } from './routes.js';
 import './styles.css';
 
@@ -30,7 +31,8 @@ class ErrorBoundary extends Component {
 }
 
 const route = currentRoute();
-const page = route === 'results' ? createElement(ResultsPage) : createElement(App, { route });
+const pages = { results: ResultsPage, me: MyResultPage };
+const page = pages[route] ? createElement(pages[route]) : createElement(App, { route });
 
 // Переход между маршрутами внутри файла (#/…) — просто перезагружаем страницу.
 window.addEventListener('hashchange', () => window.location.reload());

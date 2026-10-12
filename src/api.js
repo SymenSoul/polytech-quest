@@ -39,6 +39,19 @@ export const tokenStorage = {
   clear: () => safeStorage(() => localStorage.removeItem(TOKEN_KEY)),
 };
 
+const HISTORY_KEY = 'polytech-quest-history';
+const HISTORY_LIMIT = 30;
+
+// Прошлые участники с этого компьютера: «Новый участник» не стирает сессию, а переносит её сюда,
+// чтобы результат можно было посмотреть на странице «Мой результат».
+export const sessionHistory = {
+  read: () => jsonStorage.read(HISTORY_KEY, []),
+  add: (token) => {
+    const items = sessionHistory.read().filter((item) => item.token !== token);
+    jsonStorage.save(HISTORY_KEY, [{ token, savedAt: Date.now() }, ...items].slice(0, HISTORY_LIMIT));
+  },
+};
+
 // Небольшие данные в localStorage (JSON); если хранилище недоступно, возвращается fallback.
 export const jsonStorage = {
   read: (key, fallback) => safeStorage(() => JSON.parse(localStorage.getItem(key))) ?? fallback,

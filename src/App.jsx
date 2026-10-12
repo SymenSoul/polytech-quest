@@ -6,6 +6,7 @@ import {
   Clock3,
   Code2,
   Database,
+  ExternalLink,
   GitBranch,
   Globe2,
   Hourglass,
@@ -44,6 +45,7 @@ import {
   storyFor,
 } from './questContent.js';
 import Registration from './Registration.jsx';
+import { routeHref } from './routes.js';
 import { FinalResults } from './Results.jsx';
 import { useQuestSession } from './useQuestSession.js';
 
@@ -391,6 +393,10 @@ function MissionStats({ session, onLogout }) {
           {player.totalHints}
         </span>
       </div>
+      <a className="ghost-action my-result-link" href={routeHref('me')} target="_blank" rel="noreferrer">
+        Мой результат
+        <ExternalLink size={14} />
+      </a>
       {offline && (
         <span className="offline-note">
           <WifiOff size={14} />

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { DEFAULT_SCORING, computeScore } from '../shared/quest.js';
-import { randomId, request, tokenStorage } from './api.js';
+import { randomId, request, sessionHistory, tokenStorage } from './api.js';
 
 const RETRY_DELAY_MS = 2000;
 
@@ -118,6 +118,7 @@ export function useQuestSession() {
   );
 
   const logout = useCallback(() => {
+    if (tokenRef.current) sessionHistory.add(tokenRef.current);
     tokenRef.current = null;
     queueRef.current = [];
     tokenStorage.clear();

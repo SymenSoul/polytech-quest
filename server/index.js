@@ -5,7 +5,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_SCORING } from '../shared/quest.js';
+import { DEFAULT_SCORING, DEFAULT_SETTINGS } from '../shared/quest.js';
 import { createApi } from './api.js';
 import { Store } from './store.js';
 
@@ -22,6 +22,15 @@ const scoring = {
   perTask: numberFromEnv('POINTS_PER_TASK', DEFAULT_SCORING.perTask),
   perMistake: numberFromEnv('PENALTY_MISTAKE', DEFAULT_SCORING.perMistake),
   perHint: numberFromEnv('PENALTY_HINT', DEFAULT_SCORING.perHint),
+};
+
+// Лимиты времени для режима «на время», минуты (значения из админ-панели важнее).
+const defaultSettings = {
+  timeLimits: {
+    junior: numberFromEnv('TIME_LIMIT_JUNIOR', DEFAULT_SETTINGS.timeLimits.junior),
+    senior: numberFromEnv('TIME_LIMIT_SENIOR', DEFAULT_SETTINGS.timeLimits.senior),
+    expert: numberFromEnv('TIME_LIMIT_EXPERT', DEFAULT_SETTINGS.timeLimits.expert),
+  },
 };
 
 const MIME_TYPES = {
@@ -44,7 +53,7 @@ if (!isDev && !existsSync(path.join(distDir, 'index.html'))) {
   process.exit(1);
 }
 
-const store = new Store(DATA_FILE, scoring);
+const store = new Store(DATA_FILE, scoring, defaultSettings);
 await store.load();
 const handleApi = createApi(store, { adminKey: ADMIN_KEY, scoring });
 

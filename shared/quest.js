@@ -46,6 +46,34 @@ export const LEVELS = {
 };
 
 export const LEVEL_IDS = Object.keys(LEVELS);
+
+// Режим выбирает участник: «на время» попадает в рейтинг, «просто так» — только для себя.
+export const MODES = {
+  timed: { id: 'timed', name: 'На время', ranked: true },
+  practice: { id: 'practice', name: 'Просто так', ranked: false },
+};
+
+export const STATUS_LABELS = {
+  playing: 'в игре',
+  finished: 'финиш',
+  timeout: 'время вышло',
+};
+
+// Лимиты по умолчанию, минуты. Расчёт: брифинги + чтение условия + перебор вариантов + запас ~25 %
+// (подробно в README). Организатор может поменять их в админ-панели /results.
+export const DEFAULT_SETTINGS = {
+  timeLimits: { junior: 15, senior: 25, expert: 25 },
+};
+
+export function normalizeSettings(settings) {
+  const timeLimits = {};
+  for (const id of LEVEL_IDS) {
+    const value = Math.round(Number(settings?.timeLimits?.[id]));
+    timeLimits[id] = value >= 1 && value <= 180 ? value : DEFAULT_SETTINGS.timeLimits[id];
+  }
+  return { timeLimits };
+}
+
 export const GRADES = [7, 8, 9];
 
 export function recommendedLevel(grade) {
@@ -84,6 +112,16 @@ export function compareResults(a, b) {
     a.elapsedMs - b.elapsedMs ||
     a.startedAt - b.startedAt
   );
+}
+
+// Склонение по числу: plural(1, ['минута', 'минуты', 'минут']) → «минута».
+export function plural(count, [one, few, many]) {
+  const tens = Math.abs(count) % 100;
+  const units = tens % 10;
+  if (tens > 10 && tens < 20) return many;
+  if (units === 1) return one;
+  if (units >= 2 && units <= 4) return few;
+  return many;
 }
 
 export function formatDuration(ms) {

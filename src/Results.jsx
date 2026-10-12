@@ -1,15 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Download, KeyRound, Lightbulb, Medal, RotateCcw, Star, TerminalSquare, Trash2, XCircle } from 'lucide-react';
-import { LEVELS, LEVEL_IDS, formatDuration } from '../shared/quest.js';
+import { DEFAULT_SETTINGS, LEVELS, LEVEL_IDS, STATUS_LABELS, formatDuration } from '../shared/quest.js';
 import { request, useNow } from './api.js';
 import { LEVEL_ICONS, ScoringRules } from './Registration.jsx';
 
 const ADMIN_KEY_STORAGE = 'polytech-quest-admin-key';
-
-const STATUS_LABELS = {
-  playing: 'в игре',
-  finished: 'финиш',
-};
 
 function useLeaderboard(intervalMs = 5000) {
   const [board, setBoard] = useState(null);
@@ -38,6 +33,18 @@ function useLeaderboard(intervalMs = 5000) {
 
 function levelRows(board, levelId) {
   return board?.levels.find((item) => item.id === levelId)?.rows ?? [];
+}
+
+function practiceCount(board, levelId) {
+  return board?.levels.find((item) => item.id === levelId)?.practice.length ?? 0;
+}
+
+function resultLine(player, level, offline) {
+  if (player.status === 'playing') {
+    return offline ? 'Нет связи с сервером. Результат отправится автоматически...' : 'Подсчитываем результат...';
+  }
+  if (player.mode === 'practice') return 'очков · игра для себя, в рейтинг не идёт';
+  return `очков · ${player.place} место на уровне «${level.name}»`;
 }
 
 export function ScoreBreakdown({ player, scoring }) {
@@ -71,7 +78,6 @@ export function ScoreBreakdown({ player, scoring }) {
 export function FinalResults({ player, scoring, offline, onNewTeam }) {
   const { board, clockOffset } = useLeaderboard();
   const level = LEVELS[player.level];
-  const waiting = player.status === 'playing';
 
   function startNewTeam() {
     if (window.confirm('Результат сохранён. Перейти к регистрации нового участника?')) {
@@ -86,14 +92,13 @@ export function FinalResults({ player, scoring, offline, onNewTeam }) {
           <span className="eyebrow">
             «{player.team}» · уровень «{level.name}» · {formatDuration(player.elapsedMs)}
           </span>
+          {player.status === 'timeout' && (
+            <span className="timeout-note">
+              Время вышло. Решено заданий: {player.solved.length} из {player.modules.length}
+            </span>
+          )}
           <strong>{player.score.total}</strong>
-          <span>
-            {waiting
-              ? offline
-                ? 'Нет связи с сервером. Результат отправится автоматически...'
-                : 'Подсчитываем результат...'
-              : `очков · ${player.place} место на уровне «${level.name}»`}
-          </span>
+          <span>{resultLine(player, level, offline)}</span>
         </div>
         <ScoreBreakdown player={player} scoring={scoring} />
         <ScoringRules scoring={scoring} />
@@ -206,6 +211,11 @@ export function ResultsPage() {
 
           <section className="data-table">
             <LeaderboardTable rows={levelRows(board, activeTab)} clockOffset={clockOffset} onDelete={onDelete} />
+            {practiceCount(board, activeTab) > 0 && (
+              <p className="muted practice-note">
+                Ещё {practiceCount(board, activeTab)} — играют «просто так», без рейтинга (они есть в CSV).
+              </p>
+            )}
           </section>
 
           <ScoringRules scoring={board.scoring} />
@@ -217,6 +227,7 @@ export function ResultsPage() {
           <KeyRound size={16} />
           Для организатора
         </div>
+        {adminKey && <SettingsForm adminKey={adminKey} onForbidden={logoutAdmin} />}
         {adminKey ? (
           <div className="action-row">
             <span className="muted">Режим управления включен: можно удалять строки.</span>
@@ -252,6 +263,57 @@ export function ResultsPage() {
         {adminError && <p className="answer-feedback">{adminError}</p>}
       </section>
     </main>
+  );
+}
+
+// Лимиты времени режима «на время»; новые значения действуют для тех, кто зарегистрируется после сохранения.
+function SettingsForm({ adminKey, onForbidden }) {
+  const [limits, setLimits] = useState(DEFAULT_SETTINGS.timeLimits);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    request('/api/config')
+      .then((data) => setLimits(data.settings.timeLimits))
+      .catch(() => {});
+  }, []);
+
+  async function save(event) {
+    event.preventDefault();
+    try {
+      const data = await request('/api/settings', {
+        method: 'PUT',
+        body: { timeLimits: limits },
+        adminKey,
+      });
+      setLimits(data.settings.timeLimits);
+      setMessage('Сохранено. Новые лимиты действуют для тех, кто зарегистрируется дальше.');
+    } catch (saveError) {
+      setMessage(saveError.message);
+      if (saveError.status === 403) onForbidden();
+    }
+  }
+
+  return (
+    <form className="settings-form" onSubmit={save}>
+      <span className="muted">Лимит времени для режима «на время», минут:</span>
+      {LEVEL_IDS.map((id) => (
+        <label key={id} className="query-part">
+          <span>{LEVELS[id].name}</span>
+          <input
+            className="answer-input"
+            type="number"
+            min="1"
+            max="180"
+            value={limits[id]}
+            onChange={(event) => setLimits({ ...limits, [id]: event.target.value })}
+          />
+        </label>
+      ))}
+      <button className="ghost-action" type="submit">
+        Сохранить
+      </button>
+      {message && <span className="muted settings-message">{message}</span>}
+    </form>
   );
 }
 

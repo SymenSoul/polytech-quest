@@ -1,10 +1,5 @@
 import { allRows } from './engine.js';
-import { LEVELS, MODULE_IDS, MODULE_LABELS, formatDuration } from './quest.js';
-
-const STATUS_LABELS = {
-  playing: 'в процессе',
-  finished: 'завершил',
-};
+import { LEVELS, MODULE_IDS, MODULE_LABELS, STATUS_LABELS, formatDuration } from './quest.js';
 
 // Таблица результатов в CSV для Excel: BOM и точка с запятой, чтобы русский Excel открыл файл без мастера импорта.
 export function buildResultsCsv(leaderboard) {
@@ -13,6 +8,7 @@ export function buildResultsCsv(leaderboard) {
     'Место',
     'Позывной',
     'Класс',
+    'Режим',
     'Статус',
     'Решено заданий',
     'Время',
@@ -23,7 +19,11 @@ export function buildResultsCsv(leaderboard) {
     'Штраф за ошибки',
     'Штраф за подсказки',
     'Очки',
-    ...MODULE_IDS.flatMap((id) => [`Ошибки: ${MODULE_LABELS[id]}`, `Подсказки: ${MODULE_LABELS[id]}`]),
+    ...MODULE_IDS.flatMap((id) => [
+      `Время: ${MODULE_LABELS[id]}`,
+      `Ошибки: ${MODULE_LABELS[id]}`,
+      `Подсказки: ${MODULE_LABELS[id]}`,
+    ]),
     'Начало',
     'Окончание',
   ];
@@ -33,6 +33,7 @@ export function buildResultsCsv(leaderboard) {
     row.place ?? '',
     row.team,
     row.className,
+    row.mode === 'timed' ? `на время${row.timeLimitMs ? ` (${row.timeLimitMs / 60000} мин)` : ''}` : 'просто так',
     STATUS_LABELS[row.status] ?? row.status,
     `${row.solved.length}/${row.modules.length}`,
     formatDuration(row.elapsedMs),
@@ -43,14 +44,30 @@ export function buildResultsCsv(leaderboard) {
     row.score.mistakePenalty,
     row.score.hintPenalty,
     row.score.total,
-    ...MODULE_IDS.flatMap((id) =>
-      row.modules.includes(id) ? [row.mistakes[id] ?? 0, row.hints[id] ?? 0] : ['', ''],
-    ),
+    ...MODULE_IDS.flatMap((id) => {
+      if (!row.modules.includes(id)) return ['', '', ''];
+      const taskTime = taskDurations(row)[id];
+      return [taskTime === undefined ? '' : formatDuration(taskTime), row.mistakes[id] ?? 0, row.hints[id] ?? 0];
+    }),
     formatDate(row.startedAt),
     row.finishedAt ? formatDate(row.finishedAt) : '',
   ]);
 
-  return '﻿' + [header, ...rows].map((cells) => cells.map(csvCell).join(';')).join('\r\n');
+  return '\uFEFF' + [header, ...rows].map((cells) => cells.map(csvCell).join(';')).join('\r\n');
+}
+
+// Сколько ушло на каждое задание: от решения предыдущего (или от старта) до решения этого.
+// Нужно, чтобы после пробного прохода проверить, хватает ли лимита времени.
+function taskDurations(row) {
+  const durations = {};
+  let previous = row.startedAt;
+  for (const id of row.modules) {
+    const solvedAt = row.solvedAt[id];
+    if (!solvedAt) break;
+    durations[id] = solvedAt - previous;
+    previous = solvedAt;
+  }
+  return durations;
 }
 
 function csvCell(value) {

@@ -8,6 +8,7 @@ import {
   Database,
   GitBranch,
   Globe2,
+  Hourglass,
   Lightbulb,
   LockKeyhole,
   LogOut,
@@ -144,7 +145,9 @@ function QuestGame({ session }) {
   const levelModules = useMemo(() => modules.filter((item) => level.modules.includes(item.id)), [level]);
   const [active, setActive] = useState(() => Math.min(solved.length, levelModules.length - 1));
   const [showBriefing, setShowBriefing] = useState(true);
-  const [showResults, setShowResults] = useState(() => Boolean(player.finishedAt));
+  const [showResults, setShowResults] = useState(() => player.status !== 'playing');
+  const [timedOut, setTimedOut] = useState(() => player.status === 'timeout');
+  const deadline = player.timeLimitMs ? player.startedAt + player.timeLimitMs : null;
   const [readStories, setReadStories] = useState([]);
 
   const module = levelModules[active];
@@ -196,9 +199,26 @@ function QuestGame({ session }) {
     }
   }
 
+  // Когда время вышло, задания закрываются и показываются итоги.
+  useEffect(() => {
+    if (!deadline || player.status !== 'playing') return undefined;
+    const timerId = window.setTimeout(
+      () => {
+        setTimedOut(true);
+        setShowResults(true);
+        session.refresh();
+      },
+      Math.max(0, deadline - (Date.now() + session.clockOffset)),
+    );
+    return () => window.clearTimeout(timerId);
+  }, [deadline, player.status, session]);
+
   const markStoryRead = useCallback((storyKey) => {
     setReadStories((items) => (items.includes(storyKey) ? items : [...items, storyKey]));
   }, []);
+
+  let eyebrow = `Модуль ${active + 1} / ${levelModules.length}`;
+  if (showResults) eyebrow = timedOut ? 'Время вышло' : 'Дело закрыто';
 
   return (
     <main className="app-shell" style={{ '--accent': module.accent, '--accent-rgb': module.accentRgb }}>
@@ -235,7 +255,7 @@ function QuestGame({ session }) {
               <button
                 key={item.id}
                 className={`nav-node ${active === index ? 'active' : ''} ${done ? 'done' : ''}`}
-                disabled={!available}
+                disabled={!available || timedOut}
                 onClick={() => {
                   setActive(index);
                   setShowBriefing(true);
@@ -264,7 +284,7 @@ function QuestGame({ session }) {
       <section className="stage">
         <header className="stage-header">
           <div>
-            <span className="eyebrow">{showResults ? 'Дело закрыто' : `Модуль ${active + 1} / ${levelModules.length}`}</span>
+            <span className="eyebrow">{eyebrow}</span>
             <h1>{showResults ? 'Итоги расследования' : story.title}</h1>
           </div>
           <div className="module-token">
@@ -309,7 +329,9 @@ function QuestGame({ session }) {
 function MissionStats({ session, onLogout }) {
   const { player, clockOffset, offline } = session;
   const now = useNow() + clockOffset;
-  const elapsed = player.finishedAt ? player.elapsedMs : now - player.startedAt;
+  const elapsed = player.status === 'playing' ? now - player.startedAt : player.elapsedMs;
+  // В режиме «на время» показываем, сколько осталось, иначе — сколько прошло.
+  const remaining = player.timeLimitMs ? Math.max(0, player.timeLimitMs - elapsed) : null;
 
   return (
     <div className="mission-stats">
@@ -320,17 +342,25 @@ function MissionStats({ session, onLogout }) {
         </button>
       </div>
       <span className="mission-level">
-        Уровень «{LEVELS[player.level]?.name}» · {player.className} класс
+        «{LEVELS[player.level]?.name}» · {player.className} класс ·{' '}
+        {player.mode === 'timed' ? 'на время' : 'просто так'}
       </span>
       <div className="stat-row">
         <span title="Очки">
           <Star size={15} />
           {player.score.total}
         </span>
-        <span title="Время">
-          <Clock3 size={15} />
-          {formatDuration(elapsed)}
-        </span>
+        {remaining === null ? (
+          <span title="Прошло времени">
+            <Clock3 size={15} />
+            {formatDuration(elapsed)}
+          </span>
+        ) : (
+          <span title="Осталось времени" className={remaining < 2 * 60000 ? 'time-warning' : ''}>
+            <Hourglass size={15} />
+            {formatDuration(remaining)}
+          </span>
+        )}
         <span title="Ошибки">
           <XCircle size={15} />
           {player.totalMistakes}

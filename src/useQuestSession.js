@@ -16,6 +16,8 @@ export function useQuestSession() {
   const flushingRef = useRef(false);
   const scoringRef = useRef(scoring);
   scoringRef.current = scoring;
+  const clockOffsetRef = useRef(clockOffset);
+  clockOffsetRef.current = clockOffset;
 
   const accept = useCallback((data) => {
     setPlayer(data.player);
@@ -85,11 +87,24 @@ export function useQuestSession() {
   const sendEvent = useCallback(
     (type, module) => {
       setPlayer((current) => current && applyLocally(current, type, module, scoringRef.current));
-      queueRef.current.push({ eventId: randomId(), type, module });
+      // at — момент действия по часам сервера: если связь пропала, событие дойдёт позже, но время будет честным.
+      queueRef.current.push({ eventId: randomId(), type, module, at: Date.now() + clockOffsetRef.current });
       flush();
     },
     [flush],
   );
+
+  // Тихо подтягивает актуальное состояние с сервера (например, когда закончилось время).
+  const refresh = useCallback(async () => {
+    const token = tokenRef.current;
+    if (!token || queueRef.current.length > 0) return;
+    try {
+      const data = await request('/api/session', { token });
+      if (token === tokenRef.current) accept(data);
+    } catch {
+      // Не страшно: очередь событий и следующий запрос всё равно синхронизируют данные.
+    }
+  }, [accept]);
 
   const register = useCallback(
     async (form) => {
@@ -109,7 +124,7 @@ export function useQuestSession() {
     setOffline(false);
   }, []);
 
-  return { status, player, scoring, clockOffset, offline, reload, register, sendEvent, logout };
+  return { status, player, scoring, clockOffset, offline, reload, refresh, register, sendEvent, logout };
 }
 
 // Мгновенно показываем результат действия, не дожидаясь сервера; его ответ потом заменит эти данные.

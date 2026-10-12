@@ -1415,3 +1415,47 @@ a.ghost-action {
   border-color: rgba(41, 240, 200, 0.5);
   color: #29f0c8;
 }
+
+/* Режимы игры и настройки лимитов */
+
+.mode-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.stat-row .time-warning,
+.stat-row .time-warning svg {
+  color: #ffdd55;
+}
+
+.timeout-note {
+  color: #ffdd55;
+  font-weight: 800;
+}
+
+.status-timeout {
+  border-color: rgba(255, 221, 85, 0.5);
+  color: #ffdd55;
+}
+
+.practice-note {
+  margin: 12px 0 0;
+  font-size: 0.86rem;
+}
+
+.settings-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+
+.settings-form .settings-message,
+.settings-form > .muted:first-child {
+  flex-basis: 100%;
+}
+
+.admin-panel .settings-form .answer-input {
+  width: 96px;
+}

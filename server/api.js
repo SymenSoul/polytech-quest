@@ -7,7 +7,7 @@ const MAX_BODY_BYTES = 16 * 1024;
 
 export function createApi(store, { adminKey, scoring }) {
   const routes = {
-    'GET /api/config': () => ({ mode: 'server', scoring, levels: LEVELS }),
+    'GET /api/config': () => ({ mode: 'server', scoring, levels: LEVELS, settings: store.settings }),
 
     'GET /api/nickname': (req, url) => ({ nickname: store.suggestNickname(url.searchParams.get('exclude') ?? '') }),
 
@@ -32,6 +32,11 @@ export function createApi(store, { adminKey, scoring }) {
     'GET /api/admin/check': (req) => {
       requireAdmin(req);
       return { ok: true };
+    },
+
+    'PUT /api/settings': async (req) => {
+      requireAdmin(req);
+      return { settings: store.updateSettings(await readJson(req)) };
     },
 
     'DELETE /api/players': (req) => {

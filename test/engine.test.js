@@ -10,19 +10,26 @@ import {
   summarizeWithPlace,
 } from '../shared/engine.js';
 import { generateNickname, isGeneratedNickname } from '../shared/nicknames.js';
-import { DEFAULT_SCORING, LEVELS, recommendedLevel } from '../shared/quest.js';
+import {
+  DEFAULT_SCORING,
+  DEFAULT_SETTINGS,
+  LEVELS,
+  normalizeSettings,
+  plural,
+  recommendedLevel,
+} from '../shared/quest.js';
 
 const T0 = Date.UTC(2026, 9, 12, 9, 0, 0);
 const MINUTE = 60000;
 let eventCounter = 0;
 
-function event(type, module) {
+function event(type, module, at) {
   eventCounter += 1;
-  return { eventId: `test-event-${eventCounter}`, type, module };
+  return { eventId: `test-event-${eventCounter}`, type, module, at };
 }
 
 function register(players, form = {}, now = T0) {
-  const player = createPlayer(players, { grade: 8, level: 'senior', ...form }, now);
+  const player = createPlayer(players, { grade: 8, level: 'senior', mode: 'timed', ...form }, now);
   players.push(player);
   return player;
 }
@@ -52,13 +59,15 @@ test('позывные не повторяются даже после исче�
 });
 
 test('регистрация требует класс и уровень, буква класса нормализуется', () => {
-  assert.throws(() => createPlayer([], { level: 'senior' }), QuestError);
-  assert.throws(() => createPlayer([], { grade: 8, level: 'hard' }), QuestError);
-  assert.throws(() => createPlayer([], { grade: 6, level: 'senior' }), QuestError);
+  const form = { grade: 8, level: 'senior', mode: 'timed' };
+  assert.throws(() => createPlayer([], { ...form, grade: undefined }), QuestError);
+  assert.throws(() => createPlayer([], { ...form, level: 'hard' }), QuestError);
+  assert.throws(() => createPlayer([], { ...form, grade: 6 }), QuestError);
+  assert.throws(() => createPlayer([], { ...form, mode: undefined }), QuestError);
 
-  const player = createPlayer([], { grade: '7', classLetter: 'б', level: 'junior' }, T0);
+  const player = createPlayer([], { ...form, grade: '7', classLetter: 'б', level: 'junior' }, T0);
   assert.equal(summarize(player, DEFAULT_SCORING, T0).className, '7Б');
-  assert.equal(createPlayer([], { grade: 9, classLetter: '1', level: 'senior' }).classLetter, '');
+  assert.equal(createPlayer([], { ...form, classLetter: '1' }).classLetter, '');
 });
 
 test('рекомендуемый уровень зависит от класса', () => {
@@ -85,6 +94,7 @@ test('«Лисёнок» проходит 3 задания и не может р
 
   applyEvent(player, event('solve', 'sql'), T0 + MINUTE);
   applyEvent(player, event('solve', 'security'), T0 + 2 * MINUTE);
+  assert.equal(player.solvedAt.security, T0 + 2 * MINUTE);
   assert.equal(player.finishedAt, null);
   applyEvent(player, event('solve', 'network'), T0 + 3 * MINUTE);
   assert.equal(player.finishedAt, T0 + 3 * MINUTE);
@@ -137,6 +147,69 @@ test('рейтинг отдельный для каждого уровня; пр
   assert.equal(summarizeWithPlace(players, slow, DEFAULT_SCORING).place, 2);
 });
 
+test('лимит времени берётся из настроек уровня в момент регистрации', () => {
+  const settings = normalizeSettings({ timeLimits: { junior: 10 } });
+  assert.equal(settings.timeLimits.senior, DEFAULT_SETTINGS.timeLimits.senior);
+  assert.equal(normalizeSettings({ timeLimits: { junior: -5 } }).timeLimits.junior, 15);
+
+  const timed = createPlayer([], { grade: 7, level: 'junior', mode: 'timed' }, T0, settings);
+  assert.equal(timed.timeLimitMs, 10 * MINUTE);
+  const practice = createPlayer([], { grade: 7, level: 'junior', mode: 'practice' }, T0, settings);
+  assert.equal(practice.timeLimitMs, 0);
+});
+
+test('после дедлайна события не принимаются, статус — «время вышло»', () => {
+  const player = register([], { grade: 7, level: 'junior' });
+  const limit = player.timeLimitMs;
+  applyEvent(player, event('solve', 'sql'), T0 + MINUTE);
+  assert.equal(applyEvent(player, event('solve', 'security'), T0 + limit + 1), false);
+  assert.deepEqual(player.solved, ['sql']);
+
+  const summary = summarize(player, DEFAULT_SCORING, T0 + limit + 5 * MINUTE);
+  assert.equal(summary.status, 'timeout');
+  assert.equal(summary.elapsedMs, limit);
+  assert.equal(summary.score.total, 200);
+});
+
+test('событие из очереди после обрыва связи учитывается по времени действия', () => {
+  const player = register([], { grade: 7, level: 'junior' });
+  const limit = player.timeLimitMs;
+  // Решено за минуту до конца, а до сервера дошло уже после дедлайна.
+  assert.equal(applyEvent(player, event('solve', 'sql', T0 + limit - MINUTE), T0 + limit + MINUTE), true);
+  assert.equal(player.solvedAt.sql, T0 + limit - MINUTE);
+
+  // Время из будущего обрезается до текущего момента сервера.
+  const other = register([]);
+  applyEvent(other, event('solve', 'sql', T0 + 99 * MINUTE), T0 + MINUTE);
+  assert.equal(other.solvedAt.sql, T0 + MINUTE);
+});
+
+test('«просто так» не попадает в рейтинг и не получает место', () => {
+  const players = [];
+  const ranked = register(players);
+  const practice = register(players, { mode: 'practice' });
+  solveAll(practice, T0 + MINUTE);
+
+  const senior = buildLeaderboard(players, DEFAULT_SCORING, T0 + 2 * MINUTE).levels.find(
+    (level) => level.id === 'senior',
+  );
+  assert.deepEqual(
+    senior.rows.map((row) => row.id),
+    [ranked.id],
+  );
+  assert.equal(senior.practice[0].id, practice.id);
+  assert.equal(summarizeWithPlace(players, practice, DEFAULT_SCORING).place, null);
+  assert.equal(summarizeWithPlace(players, ranked, DEFAULT_SCORING).place, 1);
+});
+
+test('склонение по числу', () => {
+  const forms = ['минута', 'минуты', 'минут'];
+  assert.deepEqual(
+    [1, 2, 5, 11, 15, 21, 22, 25].map((count) => plural(count, forms)),
+    ['минута', 'минуты', 'минут', 'минут', 'минут', 'минута', 'минуты', 'минут'],
+  );
+});
+
 test('старые записи без уровня читаются как «Тигр»', () => {
   const legacy = {
     id: 'aa',
@@ -151,6 +224,7 @@ test('старые записи без уровня читаются как «Т
   };
   const summary = summarize(legacy, DEFAULT_SCORING, T0);
   assert.equal(summary.level, 'senior');
+  assert.equal(summary.mode, 'timed');
   assert.equal(summary.className, '9Б');
 });
 
@@ -158,8 +232,14 @@ test('CSV экранирует формулы и разделители', () => 
   const players = [];
   const player = register(players);
   player.team = '=HYPERLINK("x");1';
-  const csv = buildResultsCsv(buildLeaderboard(players, DEFAULT_SCORING, T0));
-  assert.ok(csv.startsWith('﻿'));
+  applyEvent(player, event('solve', 'sql'), T0 + 90 * 1000);
+  register(players, { mode: 'practice' });
+  const csv = buildResultsCsv(buildLeaderboard(players, DEFAULT_SCORING, T0 + 2 * MINUTE));
+  assert.ok(csv.startsWith('\uFEFF'));
   assert.ok(csv.includes(`"'=HYPERLINK(""x"");1"`));
   assert.ok(csv.includes('Тигр;1;'));
+  assert.ok(csv.includes(';на время (25 мин);'));
+  assert.ok(csv.includes(';просто так;'));
+  // Время на первое задание: 1,5 минуты от старта.
+  assert.ok(csv.includes(';01:30;0;0;'));
 });

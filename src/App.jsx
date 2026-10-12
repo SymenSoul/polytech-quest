@@ -23,7 +23,14 @@ import {
   X,
   XCircle,
 } from 'lucide-react';
-import { LEVELS, LEVEL_IDS, MODULE_IDS, formatDuration } from '../shared/quest.js';
+import {
+  HINT_STEPS,
+  LEVELS,
+  LEVEL_IDS,
+  MODULE_IDS,
+  formatDuration,
+  hintReadyAt as getHintReadyAt,
+} from '../shared/quest.js';
 import { useNow } from './api.js';
 import {
   NETWORK_FACTS,
@@ -94,6 +101,8 @@ const ChallengeContext = createContext({
   moduleId: 'sql',
   hintsShown: 0,
   hintPenalty: 0,
+  hintReadyAt: 0,
+  clockOffset: 0,
   revealHint: () => {},
 });
 
@@ -167,9 +176,11 @@ function QuestGame({ session }) {
       moduleId: module.id,
       hintsShown: player.hints[module.id] ?? 0,
       hintPenalty: scoring.perHint,
+      hintReadyAt: getHintReadyAt(player, level.modules, module.id),
+      clockOffset: session.clockOffset,
       revealHint: () => sendEvent('hint', module.id),
     }),
-    [level, module.id, player.hints, scoring.perHint, sendEvent],
+    [level, module.id, player, scoring.perHint, sendEvent, session.clockOffset],
   );
 
   function solveCurrent() {
@@ -501,26 +512,48 @@ function ChallengeFrame({ solved, onBrief, children }) {
   );
 }
 
+// Ступенчатые подсказки: каждая следующая подробнее, между ними пауза.
 function HintPanel() {
-  const { level, moduleId, hintsShown, hintPenalty, revealHint } = useContext(ChallengeContext);
+  const { level, moduleId, hintsShown, hintPenalty, hintReadyAt, clockOffset, revealHint } =
+    useContext(ChallengeContext);
+  const now = useNow() + clockOffset;
   const hints = hintsFor(moduleId, level.id).slice(0, level.hintLimit);
   const visibleCount = Math.min(hintsShown, hints.length);
   const canReveal = visibleCount < hints.length;
+  const waitMs = Math.max(0, hintReadyAt - now);
+  const lastClickRef = useRef(0);
+
+  // Защита от двойного клика: второй клик в ту же секунду не открывает ещё одну подсказку.
+  function reveal() {
+    if (Date.now() - lastClickRef.current < 1000) return;
+    lastClickRef.current = Date.now();
+    revealHint();
+  }
+
+  let label = 'Все подсказки открыты';
+  if (canReveal && waitMs > 0) {
+    // Округляем вверх, чтобы не показывать «через 0:00».
+    label = `${visibleCount ? 'Следующая подсказка' : 'Подсказка'} через ${formatDuration(waitMs + 999)}`;
+  } else if (canReveal) {
+    const step = HINT_STEPS[visibleCount].toLowerCase();
+    label = `Подсказка ${visibleCount + 1} из ${hints.length}: ${step} · −${hintPenalty} очков`;
+  }
 
   return (
     <aside className="hint-dock" aria-label="Подсказки">
-      <button className="hint-trigger" disabled={!canReveal} onClick={revealHint}>
+      <button className="hint-trigger" disabled={!canReveal || waitMs > 0} onClick={reveal}>
         <AlertTriangle size={16} />
-        {canReveal
-          ? `Подсказка ${visibleCount}/${hints.length} · −${hintPenalty} баллов`
-          : 'Все подсказки открыты'}
+        {label}
       </button>
       {visibleCount > 0 && (
         <div className="hint-stack">
           {hints.slice(0, visibleCount).map((hint, index) => (
             <p key={hint}>
               <strong>{index + 1}</strong>
-              {hint}
+              <span>
+                <b className="hint-step">{HINT_STEPS[index]}</b>
+                {hint}
+              </span>
             </p>
           ))}
         </div>

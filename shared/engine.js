@@ -7,6 +7,7 @@ import {
   MODES,
   compareResults,
   computeScore,
+  hintAllowed,
   sumValues,
 } from './quest.js';
 import { generateNickname, isGeneratedNickname } from './nicknames.js';
@@ -139,8 +140,14 @@ export function applyEvent(player, { eventId, type, module, at }, now = Date.now
     }
   } else if (type === 'mistake' && isCurrent) {
     player.mistakes[module] = (player.mistakes[module] ?? 0) + 1;
-  } else if (type === 'hint' && isCurrent && (player.hints[module] ?? 0) < level.hintLimit) {
+  } else if (
+    type === 'hint' &&
+    isCurrent &&
+    (player.hints[module] ?? 0) < level.hintLimit &&
+    hintAllowed(player, level.modules, module, eventTime)
+  ) {
     player.hints[module] = (player.hints[module] ?? 0) + 1;
+    player.lastHintAt = { ...player.lastHintAt, [module]: eventTime };
   }
 
   player.events.push(eventId);
@@ -174,6 +181,7 @@ export function summarize(player, scoring, now = Date.now()) {
     modules: level.modules,
     solved: player.solved,
     solvedAt: player.solvedAt ?? {},
+    lastHintAt: player.lastHintAt ?? {},
     mistakes: player.mistakes,
     hints: player.hints,
     totalMistakes,

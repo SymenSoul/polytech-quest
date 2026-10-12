@@ -14,6 +14,8 @@ import {
   DEFAULT_SCORING,
   DEFAULT_SETTINGS,
   LEVELS,
+  HINT_COOLDOWN_MS,
+  hintReadyAt,
   normalizeSettings,
   plural,
   recommendedLevel,
@@ -106,13 +108,30 @@ test('«Лисёнок» проходит 3 задания и не может р
 
 test('подсказок не больше лимита уровня', () => {
   const dragon = register([], { level: 'expert' });
-  for (let index = 0; index < 5; index += 1) applyEvent(dragon, event('hint', 'sql'), T0);
+  for (let index = 1; index <= 5; index += 1) applyEvent(dragon, event('hint', 'sql'), T0 + index * MINUTE);
   assert.equal(dragon.hints.sql, LEVELS.expert.hintLimit);
+});
+
+test('подсказки открываются с паузой после начала задания и после предыдущей', () => {
+  const player = register([]);
+  const pause = HINT_COOLDOWN_MS;
+  assert.equal(applyEvent(player, event('hint', 'sql'), T0 + 5000), true);
+  assert.equal(player.hints.sql, 0, 'сразу после старта рано');
+
+  applyEvent(player, event('hint', 'sql'), T0 + pause);
+  applyEvent(player, event('hint', 'sql'), T0 + pause + 10000);
+  assert.equal(player.hints.sql, 1, 'вторая подсказка ждёт паузу');
+  applyEvent(player, event('hint', 'sql'), T0 + 2 * pause);
+  assert.equal(player.hints.sql, 2);
+
+  // Для следующего задания пауза считается от момента решения предыдущего.
+  applyEvent(player, event('solve', 'sql'), T0 + 5 * MINUTE);
+  assert.equal(hintReadyAt(player, LEVELS.senior.modules, 'python'), T0 + 5 * MINUTE + pause);
 });
 
 test('очки: 200 за задание минус штрафы, текущие очки видны до финиша', () => {
   const player = register([]);
-  applyEvent(player, event('hint', 'sql'), T0);
+  applyEvent(player, event('hint', 'sql'), T0 + MINUTE);
   applyEvent(player, event('mistake', 'sql'), T0);
   applyEvent(player, event('solve', 'sql'), T0);
   assert.deepEqual(summarize(player, DEFAULT_SCORING, T0).score, {

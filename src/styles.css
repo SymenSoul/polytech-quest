@@ -1459,3 +1459,11 @@ a.ghost-action {
 .admin-panel .settings-form .answer-input {
   width: 96px;
 }
+
+.hint-step {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--accent);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}

@@ -47,6 +47,25 @@ export const LEVELS = {
 
 export const LEVEL_IDS = Object.keys(LEVELS);
 
+// Подсказки открываются по ступеням: наводящая → подробнее → почти ответ.
+// Между ними пауза, чтобы сначала подумать самому, а не пролистать до ответа.
+export const HINT_STEPS = ['Наводящая', 'Подробнее', 'Почти ответ'];
+export const HINT_COOLDOWN_MS = 30000;
+// Запас на расхождение часов участника и сервера.
+const HINT_TOLERANCE_MS = 2000;
+
+// Когда можно открыть следующую подсказку: через паузу после предыдущей,
+// а первую — через паузу после начала задания (решения предыдущего).
+export function hintReadyAt({ startedAt, solvedAt, lastHintAt }, modules, module) {
+  const index = modules.indexOf(module);
+  const moduleStart = index > 0 ? (solvedAt?.[modules[index - 1]] ?? startedAt) : startedAt;
+  return (lastHintAt?.[module] ?? moduleStart) + HINT_COOLDOWN_MS;
+}
+
+export function hintAllowed(player, modules, module, at) {
+  return at >= hintReadyAt(player, modules, module) - HINT_TOLERANCE_MS;
+}
+
 // Режим выбирает участник: «на время» попадает в рейтинг, «просто так» — только для себя.
 export const MODES = {
   timed: { id: 'timed', name: 'На время', ranked: true },

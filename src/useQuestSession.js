@@ -86,9 +86,10 @@ export function useQuestSession() {
 
   const sendEvent = useCallback(
     (type, module) => {
-      setPlayer((current) => current && applyLocally(current, type, module, scoringRef.current));
       // at — момент действия по часам сервера: если связь пропала, событие дойдёт позже, но время будет честным.
-      queueRef.current.push({ eventId: randomId(), type, module, at: Date.now() + clockOffsetRef.current });
+      const at = Date.now() + clockOffsetRef.current;
+      setPlayer((current) => current && applyLocally(current, { type, module, at }, scoringRef.current));
+      queueRef.current.push({ eventId: randomId(), type, module, at });
       flush();
     },
     [flush],
@@ -128,10 +129,12 @@ export function useQuestSession() {
 }
 
 // Мгновенно показываем результат действия, не дожидаясь сервера; его ответ потом заменит эти данные.
-function applyLocally(player, type, module, scoring) {
+function applyLocally(player, { type, module, at }, scoring) {
   let next;
   if (type === 'solve') {
-    next = player.solved.includes(module) ? player : { ...player, solved: [...player.solved, module] };
+    next = player.solved.includes(module)
+      ? player
+      : { ...player, solved: [...player.solved, module], solvedAt: { ...player.solvedAt, [module]: at } };
   } else {
     const key = type === 'hint' ? 'hints' : 'mistakes';
     const totalKey = type === 'hint' ? 'totalHints' : 'totalMistakes';
@@ -140,6 +143,7 @@ function applyLocally(player, type, module, scoring) {
       [key]: { ...player[key], [module]: (player[key][module] ?? 0) + 1 },
       [totalKey]: player[totalKey] + 1,
     };
+    if (type === 'hint') next.lastHintAt = { ...player.lastHintAt, [module]: at };
   }
 
   const score = computeScore(

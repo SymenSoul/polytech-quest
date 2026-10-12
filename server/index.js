@@ -5,7 +5,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_SCORING, DEFAULT_SETTINGS } from '../shared/quest.js';
+import { DEFAULT_SCORING, DEFAULT_SETTINGS, LEVELS, LEVEL_IDS } from '../shared/quest.js';
 import { createApi } from './api.js';
 import { Store } from './store.js';
 
@@ -86,7 +86,10 @@ server.listen(PORT, HOST, () => {
     console.log(`  http://${address}:${PORT}`);
   }
   console.log(`  http://localhost:${PORT} (на этом компьютере)`);
-  console.log(`\nТаблица результатов:  http://localhost:${PORT}/results`);
+  console.log('\nСсылки сразу на уровень: добавьте к адресу /junior, /senior или /expert.');
+  const limits = LEVEL_IDS.map((id) => `${LEVELS[id].name} ${store.settings.timeLimits[id]} мин`).join(', ');
+  console.log(`Лимиты режима «на время»: ${limits}.`);
+  console.log(`\nРейтинг:              http://localhost:${PORT}/results`);
   console.log(`Ключ организатора:    ${ADMIN_KEY}${process.env.ADMIN_KEY ? '' : ' (задайте ADMIN_KEY, чтобы он не менялся)'}`);
   console.log(`Файл с результатами:  ${DATA_FILE}\n`);
 });

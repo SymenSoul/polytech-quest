@@ -39,6 +39,13 @@ export const tokenStorage = {
   clear: () => safeStorage(() => localStorage.removeItem(TOKEN_KEY)),
 };
 
+// Небольшие данные в localStorage (JSON); если хранилище недоступно, возвращается fallback.
+export const jsonStorage = {
+  read: (key, fallback) => safeStorage(() => JSON.parse(localStorage.getItem(key))) ?? fallback,
+  save: (key, value) => safeStorage(() => localStorage.setItem(key, JSON.stringify(value))),
+  remove: (key) => safeStorage(() => localStorage.removeItem(key)),
+};
+
 function safeStorage(action) {
   try {
     return action();

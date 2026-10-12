@@ -31,7 +31,7 @@ import {
   formatDuration,
   hintReadyAt as getHintReadyAt,
 } from '../shared/quest.js';
-import { useNow } from './api.js';
+import { jsonStorage, useNow } from './api.js';
 import {
   NETWORK_FACTS,
   NETWORK_NODE_LABELS,
@@ -157,7 +157,9 @@ function QuestGame({ session }) {
   const [showResults, setShowResults] = useState(() => player.status !== 'playing');
   const [timedOut, setTimedOut] = useState(() => player.status === 'timeout');
   const deadline = player.timeLimitMs ? player.startedAt + player.timeLimitMs : null;
-  const [readStories, setReadStories] = useState([]);
+  // Прочитанные брифинги помним, чтобы после F5 не ждать печать заново (особенно важно в режиме «на время»).
+  const readStoriesKey = `polytech-quest-read-${player.id}`;
+  const [readStories, setReadStories] = useState(() => jsonStorage.read(readStoriesKey, []));
 
   const module = levelModules[active];
   const story = storyFor(module.id, level.id);
@@ -224,9 +226,17 @@ function QuestGame({ session }) {
     return () => window.clearTimeout(timerId);
   }, [deadline, player.status, session]);
 
-  const markStoryRead = useCallback((storyKey) => {
-    setReadStories((items) => (items.includes(storyKey) ? items : [...items, storyKey]));
-  }, []);
+  const markStoryRead = useCallback(
+    (storyKey) => {
+      setReadStories((items) => {
+        if (items.includes(storyKey)) return items;
+        const next = [...items, storyKey];
+        jsonStorage.save(readStoriesKey, next);
+        return next;
+      });
+    },
+    [readStoriesKey],
+  );
 
   let eyebrow = `Модуль ${active + 1} / ${levelModules.length}`;
   if (showResults) eyebrow = timedOut ? 'Время вышло' : 'Дело закрыто';

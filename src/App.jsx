@@ -353,8 +353,9 @@ function MissionStats({ session, onLogout }) {
   const { player, clockOffset, offline } = session;
   const now = useNow() + clockOffset;
   const elapsed = player.status === 'playing' ? now - player.startedAt : player.elapsedMs;
-  // В режиме «на время» показываем, сколько осталось, иначе — сколько прошло.
-  const remaining = player.timeLimitMs ? Math.max(0, player.timeLimitMs - elapsed) : null;
+  // В режиме «на время» во время игры показываем, сколько осталось, иначе — сколько прошло.
+  const counting = player.timeLimitMs && player.status === 'playing';
+  const remaining = counting ? Math.max(0, player.timeLimitMs - elapsed) : null;
 
   return (
     <div className="mission-stats">

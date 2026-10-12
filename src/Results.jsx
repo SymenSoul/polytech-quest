@@ -12,7 +12,7 @@ import {
   UserRound,
   XCircle,
 } from 'lucide-react';
-import { DEFAULT_SETTINGS, LEVELS, LEVEL_IDS, STATUS_LABELS, formatDuration } from '../shared/quest.js';
+import { DEFAULT_SETTINGS, LEVELS, LEVEL_IDS, STATUS_LABELS, formatDuration, plural } from '../shared/quest.js';
 import { backendKind, request, useNow } from './api.js';
 import { LEVEL_ICONS, OfflineBanner, ScoringRules } from './Registration.jsx';
 import { Review } from './Review.jsx';
@@ -51,6 +51,11 @@ function levelRows(board, levelId) {
 
 function practiceCount(board, levelId) {
   return board?.levels.find((item) => item.id === levelId)?.practice.length ?? 0;
+}
+
+function practiceNote(count) {
+  const people = plural(count, ['участник играет', 'участника играют', 'участников играют']);
+  return `Ещё ${count} ${people} «просто так», без рейтинга (они есть в CSV).`;
 }
 
 function resultLine(player, level, offline) {
@@ -141,8 +146,6 @@ export function FinalResults({ player, scoring, offline, onNewTeam }) {
         </div>
       </div>
 
-      {reviewOpen && <Review player={player} />}
-
       <div className="data-table">
         <div className="panel-title">
           <Medal size={16} />
@@ -154,6 +157,8 @@ export function FinalResults({ player, scoring, offline, onNewTeam }) {
           <p className="muted">Загружаем таблицу...</p>
         )}
       </div>
+
+      {reviewOpen && <Review player={player} />}
     </div>
   );
 }
@@ -259,9 +264,7 @@ export function ResultsPage() {
           <section className="data-table">
             <LeaderboardTable rows={levelRows(board, activeTab)} clockOffset={clockOffset} onDelete={onDelete} />
             {practiceCount(board, activeTab) > 0 && (
-              <p className="muted practice-note">
-                Ещё {practiceCount(board, activeTab)} — играют «просто так», без рейтинга (они есть в CSV).
-              </p>
+              <p className="muted practice-note">{practiceNote(practiceCount(board, activeTab))}</p>
             )}
           </section>
 

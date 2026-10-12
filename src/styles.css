@@ -814,18 +814,21 @@ th {
 
 @media (max-width: 1080px) {
   .app-shell {
-    grid-template-columns: 1fr;
+    /* minmax(0, …): иначе ширину колонки распирает навигация и страница шире экрана телефона. */
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .side-rail {
     position: relative;
     height: auto;
+    min-width: 0;
     border-right: 0;
     border-bottom: 1px solid rgba(237, 247, 255, 0.11);
   }
 
   .mission-nav {
-    grid-template-columns: repeat(5, minmax(120px, 1fr));
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(120px, 1fr);
     overflow-x: auto;
   }
 
@@ -1601,4 +1604,14 @@ a.primary-action {
 .offline-banner svg {
   flex: none;
   color: #ffdd55;
+}
+
+.result-card .scoring-rules ul {
+  grid-template-columns: 1fr;
+}
+
+.nav-node span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

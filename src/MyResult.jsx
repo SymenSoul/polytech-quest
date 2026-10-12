@@ -3,6 +3,7 @@ import { ArrowLeft, Check, Circle, History, Hourglass, Clock3, Medal, TerminalSq
 import { LEVELS, MODULE_LABELS, STATUS_LABELS, formatDuration } from '../shared/quest.js';
 import { request, sessionHistory, tokenStorage, useNow } from './api.js';
 import { ScoreBreakdown } from './Results.jsx';
+import { Review } from './Review.jsx';
 import { routeHref } from './routes.js';
 
 // Страница /me: результат участника с этого компьютера в любой момент, даже после закрытия итогов.
@@ -72,6 +73,7 @@ export function MyResultPage() {
       )}
 
       {current && <ResultCard data={current} />}
+      {current && <Review player={current.player} />}
 
       {past.length > 0 && (
         <section className="data-table">

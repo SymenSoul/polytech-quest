@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
+  BookOpen,
   Download,
   KeyRound,
   Lightbulb,
@@ -14,6 +15,7 @@ import {
 import { DEFAULT_SETTINGS, LEVELS, LEVEL_IDS, STATUS_LABELS, formatDuration } from '../shared/quest.js';
 import { request, useNow } from './api.js';
 import { LEVEL_ICONS, ScoringRules } from './Registration.jsx';
+import { Review } from './Review.jsx';
 import { routeHref } from './routes.js';
 
 const ADMIN_KEY_STORAGE = 'polytech-quest-admin-key';
@@ -89,6 +91,7 @@ export function ScoreBreakdown({ player, scoring }) {
 // Итоги участника после финального этапа.
 export function FinalResults({ player, scoring, offline, onNewTeam }) {
   const { board, clockOffset } = useLeaderboard();
+  const [reviewOpen, setReviewOpen] = useState(false);
   const level = LEVELS[player.level];
 
   function startNewTeam() {
@@ -119,6 +122,14 @@ export function FinalResults({ player, scoring, offline, onNewTeam }) {
         <ScoreBreakdown player={player} scoring={scoring} />
         <ScoringRules scoring={scoring} />
         <div className="action-row result-actions">
+          <button
+            className="ghost-action"
+            disabled={player.status === 'playing'}
+            onClick={() => setReviewOpen((open) => !open)}
+          >
+            <BookOpen size={16} />
+            {reviewOpen ? 'Скрыть разбор' : 'Разбор заданий'}
+          </button>
           <a className="ghost-action" href={routeHref('me')} target="_blank" rel="noreferrer">
             <UserRound size={16} />
             Мой результат
@@ -129,6 +140,8 @@ export function FinalResults({ player, scoring, offline, onNewTeam }) {
           </button>
         </div>
       </div>
+
+      {reviewOpen && <Review player={player} />}
 
       <div className="data-table">
         <div className="panel-title">

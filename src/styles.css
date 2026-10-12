@@ -1515,3 +1515,70 @@ a.primary-action {
 .task-list li strong {
   color: #edf7ff;
 }
+
+/* Разбор заданий */
+
+.review {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid rgba(237, 247, 255, 0.12);
+  background: rgba(9, 12, 20, 0.78);
+}
+
+.review-item {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid rgba(237, 247, 255, 0.1);
+  border-left: 4px solid #ff5f9f;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.review-item.solved {
+  border-left-color: #29f0c8;
+}
+
+.review-item header {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 20px;
+  gap: 10px;
+  align-items: center;
+}
+
+.review-item header div {
+  display: grid;
+  gap: 2px;
+}
+
+.review-item header span:not(.review-index) {
+  color: #8da5bb;
+  font-size: 0.8rem;
+}
+
+.review-index {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 900;
+}
+
+.review-item p {
+  margin: 0;
+  color: #c3d3e1;
+  line-height: 1.55;
+}
+
+.review-answer {
+  font-family: "Cascadia Mono", "Fira Code", Consolas, monospace;
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.review-answer b {
+  color: var(--accent);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}

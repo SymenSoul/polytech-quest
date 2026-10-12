@@ -1,18 +1,15 @@
-import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { MODULE_IDS, computeScore, sumValues } from '../shared/quest.js';
-import { generateNickname, isGeneratedNickname } from './nicknames.js';
+import {
+  QuestError,
+  applyEvent,
+  buildLeaderboard,
+  createPlayer,
+  suggestNickname,
+  summarizeWithPlace,
+} from '../shared/engine.js';
 
-const EVENT_TYPES = new Set(['hint', 'mistake', 'solve']);
-const MAX_REMEMBERED_EVENTS = 500;
-
-export class HttpError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
+export { QuestError as HttpError };
 
 // Все участники хранятся в памяти и сбрасываются в JSON-файл после каждого изменения.
 export class Store {
@@ -56,38 +53,12 @@ export class Store {
     return this.saving;
   }
 
-  isNicknameTaken(name) {
-    const lower = name.toLowerCase();
-    return this.players.some((player) => player.team.toLowerCase() === lower);
-  }
-
   suggestNickname(exclude) {
-    return generateNickname((name) => this.isNicknameTaken(name), exclude);
+    return suggestNickname(this.players, exclude);
   }
 
-  register({ nickname, members, school }) {
-    // Принимаем только позывной из словаря; если его успела занять другая команда — выдаем новый.
-    const requested = String(nickname ?? '');
-    const name =
-      isGeneratedNickname(requested) && !this.isNicknameTaken(requested)
-        ? requested
-        : this.suggestNickname();
-
-    const now = Date.now();
-    const player = {
-      id: randomBytes(6).toString('hex'),
-      token: randomBytes(24).toString('hex'),
-      team: name,
-      members: cleanText(members, 160),
-      school: cleanText(school, 60),
-      startedAt: now,
-      finishedAt: null,
-      solved: [],
-      mistakes: zeroCounters(),
-      hints: zeroCounters(),
-      events: [],
-    };
-
+  register(form) {
+    const player = createPlayer(this.players, form);
     this.players.push(player);
     this.scheduleSave();
     return player;
@@ -97,46 +68,16 @@ export class Store {
     return token ? this.players.find((player) => player.token === token) : undefined;
   }
 
-  applyEvent(player, { eventId, type, module }) {
-    if (typeof eventId !== 'string' || eventId.length < 8 || eventId.length > 64) {
-      throw new HttpError(400, 'Некорректный идентификатор события.');
+  applyEvent(player, event) {
+    if (applyEvent(player, event)) {
+      this.scheduleSave();
     }
-    if (!EVENT_TYPES.has(type) || !MODULE_IDS.includes(module)) {
-      throw new HttpError(400, 'Неизвестное событие.');
-    }
-
-    // Повторно присланное событие (например, после обрыва связи) не учитываем дважды.
-    if (player.finishedAt || player.events.includes(eventId)) {
-      return;
-    }
-
-    const moduleIndex = MODULE_IDS.indexOf(module);
-    const isCurrent = moduleIndex === player.solved.length;
-
-    if (type === 'solve') {
-      if (!isCurrent) {
-        throw new HttpError(409, 'Этапы нужно проходить по порядку.');
-      }
-      player.solved.push(module);
-      if (player.solved.length === MODULE_IDS.length) {
-        player.finishedAt = Date.now();
-      }
-    } else if (isCurrent) {
-      const counters = type === 'hint' ? player.hints : player.mistakes;
-      counters[module] = (counters[module] ?? 0) + 1;
-    }
-
-    player.events.push(eventId);
-    if (player.events.length > MAX_REMEMBERED_EVENTS) {
-      player.events.splice(0, player.events.length - MAX_REMEMBERED_EVENTS);
-    }
-    this.scheduleSave();
   }
 
   remove(id) {
     const index = this.players.findIndex((player) => player.id === id);
     if (index === -1) {
-      throw new HttpError(404, 'Участник не найден.');
+      throw new QuestError(404, 'Участник не найден.');
     }
     this.players.splice(index, 1);
     this.scheduleSave();
@@ -147,68 +88,11 @@ export class Store {
     this.scheduleSave();
   }
 
-  // Публичное представление участника: без токена и служебных полей.
-  summary(player, now = Date.now()) {
-    const elapsedMs = (player.finishedAt ?? now) - player.startedAt;
-    const totalMistakes = sumValues(player.mistakes);
-    const totalHints = sumValues(player.hints);
-
-    return {
-      id: player.id,
-      team: player.team,
-      members: player.members,
-      school: player.school,
-      startedAt: player.startedAt,
-      finishedAt: player.finishedAt,
-      elapsedMs,
-      solved: player.solved,
-      mistakes: player.mistakes,
-      hints: player.hints,
-      totalMistakes,
-      totalHints,
-      score: player.finishedAt
-        ? computeScore({ elapsedMs, mistakes: totalMistakes, hints: totalHints }, this.scoring)
-        : null,
-      place: null,
-    };
-  }
-
   leaderboard(now = Date.now()) {
-    const rows = this.players.map((player) => this.summary(player, now));
-    const finished = rows
-      .filter((row) => row.finishedAt)
-      .sort(
-        (a, b) =>
-          b.score.total - a.score.total || a.elapsedMs - b.elapsedMs || a.finishedAt - b.finishedAt,
-      );
-    finished.forEach((row, index) => {
-      row.place = index + 1;
-    });
-
-    const inProgress = rows
-      .filter((row) => !row.finishedAt)
-      .sort((a, b) => b.solved.length - a.solved.length || a.startedAt - b.startedAt);
-
-    return { finished, inProgress };
+    return buildLeaderboard(this.players, this.scoring, now);
   }
 
   summaryWithPlace(player, now = Date.now()) {
-    const row = this.summary(player, now);
-    if (row.finishedAt) {
-      row.place = this.leaderboard(now).finished.findIndex((item) => item.id === row.id) + 1;
-    }
-    return row;
+    return summarizeWithPlace(this.players, player, this.scoring, now);
   }
-}
-
-function zeroCounters() {
-  return Object.fromEntries(MODULE_IDS.map((id) => [id, 0]));
-}
-
-function cleanText(value, maxLength) {
-  return String(value ?? '')
-    .replace(/[\u0000-\u001f\u007f]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, maxLength);
 }

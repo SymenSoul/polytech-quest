@@ -1,5 +1,3 @@
-import { randomInt } from 'node:crypto';
-
 // Позывные команд в духе «анонимных животных».
 // Словарь подобран так, чтобы ни одно сочетание не звучало обидно:
 // нет животных, которые в речи используются как оскорбление (осёл, петух, курица, дятел, свинья...),
@@ -88,6 +86,16 @@ export function generateNickname(isTaken, exclude = '') {
     const name = `${ALL_NICKNAMES[randomInt(ALL_NICKNAMES.length)]} ${suffix}`;
     if (!unavailable(name)) return name;
   }
+}
+
+// Равномерное случайное число 0..max-1; crypto.getRandomValues есть и в браузере, и в Node 20+.
+export function randomInt(max) {
+  const buffer = new Uint32Array(1);
+  const limit = Math.floor(0x100000000 / max) * max;
+  do {
+    globalThis.crypto.getRandomValues(buffer);
+  } while (buffer[0] >= limit);
+  return buffer[0] % max;
 }
 
 function stripSuffix(name) {

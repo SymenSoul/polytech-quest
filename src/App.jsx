@@ -1,20 +1,31 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Check,
   ChevronRight,
+  Clock3,
   Code2,
   Database,
   GitBranch,
   Globe2,
+  Lightbulb,
   LockKeyhole,
+  LogOut,
   Network,
   Play,
   RotateCcw,
   ShieldAlert,
   TerminalSquare,
+  Trophy,
+  WifiOff,
   X,
+  XCircle,
 } from 'lucide-react';
+import { MODULE_IDS, formatDuration } from '../shared/quest.js';
+import { useNow } from './api.js';
+import Registration from './Registration.jsx';
+import { FinalResults } from './Results.jsx';
+import { useQuestSession } from './useQuestSession.js';
 
 const modules = [
   {
@@ -84,6 +95,13 @@ const modules = [
   },
 ];
 
+if (modules.some((module, index) => module.id !== MODULE_IDS[index])) {
+  throw new Error('Порядок модулей в App.jsx не совпадает с MODULE_IDS в shared/quest.js');
+}
+
+// Даёт подсказкам текущего этапа доступ к счетчику и штрафу из сессии.
+const ChallengeContext = createContext({ hintsShown: 0, hintPenalty: 0, revealHint: () => {} });
+
 const logLines = [
   '[22:31] Орлов вошел в лабораторию',
   '[22:42] проверка хранилища не прошла',
@@ -93,9 +111,42 @@ const logLines = [
 ];
 
 export default function App() {
-  const [active, setActive] = useState(0);
-  const [solved, setSolved] = useState([]);
+  const session = useQuestSession();
+
+  if (session.status === 'loading') {
+    return (
+      <div className="boot-fallback">
+        <strong>Подключение к серверу...</strong>
+      </div>
+    );
+  }
+
+  if (session.status === 'error') {
+    return (
+      <div className="boot-fallback">
+        <strong>Нет связи с сервером квеста</strong>
+        <span>Проверьте подключение к сети и что сервер запущен.</span>
+        <button className="primary-action" onClick={session.reload}>
+          <RotateCcw size={18} />
+          Повторить
+        </button>
+      </div>
+    );
+  }
+
+  if (!session.player) {
+    return <Registration onRegister={session.register} />;
+  }
+
+  return <QuestGame key={session.player.id} session={session} />;
+}
+
+function QuestGame({ session }) {
+  const { player, scoring, sendEvent } = session;
+  const solved = player.solved;
+  const [active, setActive] = useState(() => Math.min(solved.length, modules.length - 1));
   const [showBriefing, setShowBriefing] = useState(true);
+  const [showResults, setShowResults] = useState(() => Boolean(player.finishedAt));
   const [readStories, setReadStories] = useState([]);
 
   const module = modules[active];
@@ -108,14 +159,27 @@ export default function App() {
     return modules.map((item, index) => index === 0 || solved.includes(modules[index - 1].id));
   }, [solved]);
 
+  const challengeContext = useMemo(
+    () => ({
+      hintsShown: player.hints[module.id] ?? 0,
+      hintPenalty: scoring.perHint,
+      revealHint: () => sendEvent('hint', module.id),
+    }),
+    [module.id, player.hints, scoring.perHint, sendEvent],
+  );
+
   function solveCurrent() {
-    setSolved((items) => (items.includes(module.id) ? items : [...items, module.id]));
+    sendEvent('solve', module.id);
 
     if (active < modules.length - 1) {
       setActive(active + 1);
     }
 
     setShowBriefing(true);
+  }
+
+  function reportMistake() {
+    sendEvent('mistake', module.id);
   }
 
   function goNext() {
@@ -125,11 +189,10 @@ export default function App() {
     }
   }
 
-  function resetMission() {
-    setActive(0);
-    setSolved([]);
-    setShowBriefing(true);
-    setReadStories([]);
+  function switchTeam() {
+    if (window.confirm('Выйти из сессии команды? Незавершенный результат останется в таблице, продолжить его будет нельзя.')) {
+      session.logout();
+    }
   }
 
   const markStoryRead = useCallback((storyKey) => {
@@ -149,6 +212,8 @@ export default function App() {
             <span>Комната расследования 07</span>
           </div>
         </div>
+
+        <MissionStats session={session} onLogout={switchTeam} />
 
         <div className="progress-block">
           <div className="progress-head">
@@ -173,6 +238,7 @@ export default function App() {
                 onClick={() => {
                   setActive(index);
                   setShowBriefing(true);
+                  setShowResults(false);
                 }}
               >
                 <Icon size={18} />
@@ -197,16 +263,23 @@ export default function App() {
       <section className="stage">
         <header className="stage-header">
           <div>
-            <span className="eyebrow">Модуль {active + 1} / 5</span>
-            <h1>{module.title}</h1>
+            <span className="eyebrow">{showResults ? 'Дело закрыто' : `Модуль ${active + 1} / ${modules.length}`}</span>
+            <h1>{showResults ? 'Итоги расследования' : module.title}</h1>
           </div>
           <div className="module-token">
-            <ModuleIcon size={24} />
-            <span>{module.label}</span>
+            {showResults ? <Trophy size={24} /> : <ModuleIcon size={24} />}
+            <span>{showResults ? 'Результат' : module.label}</span>
           </div>
         </header>
 
-        {showBriefing ? (
+        {showResults ? (
+          <FinalResults
+            player={player}
+            scoring={scoring}
+            offline={session.offline}
+            onNewTeam={session.logout}
+          />
+        ) : showBriefing ? (
           <StoryInterlude
             key={`${module.id}-${isSolved ? 'outcome' : 'intro'}`}
             module={module}
@@ -216,11 +289,13 @@ export default function App() {
             onRead={markStoryRead}
             onStart={() => setShowBriefing(false)}
             onNext={goNext}
-            onReset={resetMission}
+            onFinish={() => setShowResults(true)}
           />
         ) : (
           <ChallengeFrame solved={isSolved} onBrief={() => setShowBriefing(true)}>
-            <Challenge onSolve={solveCurrent} solved={isSolved} />
+            <ChallengeContext.Provider value={challengeContext}>
+              <Challenge onSolve={solveCurrent} onMistake={reportMistake} solved={isSolved} />
+            </ChallengeContext.Provider>
           </ChallengeFrame>
         )}
       </section>
@@ -228,7 +303,45 @@ export default function App() {
   );
 }
 
-function StoryInterlude({ module, isSolved, isFinal, hasPlayed, onRead, onStart, onNext, onReset }) {
+// Таймер и счетчики команды в боковой панели; перерисовывается раз в секунду отдельно от квеста.
+function MissionStats({ session, onLogout }) {
+  const { player, clockOffset, offline } = session;
+  const now = useNow() + clockOffset;
+  const elapsed = player.finishedAt ? player.elapsedMs : now - player.startedAt;
+
+  return (
+    <div className="mission-stats">
+      <div className="mission-team">
+        <strong title={player.team}>{player.team}</strong>
+        <button className="icon-action" title="Сменить команду" onClick={onLogout}>
+          <LogOut size={16} />
+        </button>
+      </div>
+      <div className="stat-row">
+        <span title="Время">
+          <Clock3 size={15} />
+          {formatDuration(elapsed)}
+        </span>
+        <span title="Ошибки">
+          <XCircle size={15} />
+          {player.totalMistakes}
+        </span>
+        <span title="Подсказки">
+          <Lightbulb size={15} />
+          {player.totalHints}
+        </span>
+      </div>
+      {offline && (
+        <span className="offline-note">
+          <WifiOff size={14} />
+          Нет связи с сервером, повторяем...
+        </span>
+      )}
+    </div>
+  );
+}
+
+function StoryInterlude({ module, isSolved, isFinal, hasPlayed, onRead, onStart, onNext, onFinish }) {
   const storyKey = `${module.id}-${isSolved ? 'outcome' : 'intro'}`;
   const storyText = isSolved ? module.outcome : module.intro;
   const paragraphs = useMemo(() => splitStory(storyText), [storyText]);
@@ -318,9 +431,9 @@ function StoryInterlude({ module, isSolved, isFinal, hasPlayed, onRead, onStart,
           </button>
         )}
         {isSolved && isFinal && (
-          <button className="primary-action" disabled={!isComplete} onClick={onReset}>
-            <RotateCcw size={18} />
-            Перезапустить квест
+          <button className="primary-action" disabled={!isComplete} onClick={onFinish}>
+            <Trophy size={18} />
+            Подвести итоги
           </button>
         )}
       </div>
@@ -350,18 +463,17 @@ function ChallengeFrame({ solved, onBrief, children }) {
 }
 
 function HintPanel({ hints }) {
-  const [visibleCount, setVisibleCount] = useState(0);
+  const { hintsShown, hintPenalty, revealHint } = useContext(ChallengeContext);
+  const visibleCount = Math.min(hintsShown, hints.length);
   const canReveal = visibleCount < hints.length;
 
   return (
     <aside className="hint-dock" aria-label="Подсказки">
-      <button
-        className="hint-trigger"
-        disabled={!canReveal}
-        onClick={() => setVisibleCount((count) => Math.min(count + 1, hints.length))}
-      >
+      <button className="hint-trigger" disabled={!canReveal} onClick={revealHint}>
         <AlertTriangle size={16} />
-        {canReveal ? `Подсказка ${visibleCount}/${hints.length}` : 'Все подсказки открыты'}
+        {canReveal
+          ? `Подсказка ${visibleCount}/${hints.length} · −${hintPenalty} баллов`
+          : 'Все подсказки открыты'}
       </button>
       {visibleCount > 0 && (
         <div className="hint-stack">
@@ -377,7 +489,45 @@ function HintPanel({ hints }) {
   );
 }
 
-function SqlChallenge({ onSolve, solved }) {
+// Проверка ответа: верный — засчитываем этап, неверный — ошибка.
+// Один и тот же неверный вариант повторно не штрафуется (например, при двойном клике).
+function useAnswerCheck(onSolve, onMistake) {
+  const [feedback, setFeedback] = useState(null);
+  const checkedWrong = useRef(new Set());
+
+  function check(isCorrect, signature) {
+    if (isCorrect) {
+      setFeedback(null);
+      onSolve();
+      return;
+    }
+
+    const repeated = checkedWrong.current.has(signature);
+    if (!repeated) {
+      checkedWrong.current.add(signature);
+      onMistake();
+    }
+    setFeedback({ id: Date.now(), repeated });
+  }
+
+  return [feedback, check];
+}
+
+function AnswerFeedback({ feedback }) {
+  if (!feedback) return null;
+
+  return (
+    <p key={feedback.id} className="answer-feedback" role="alert">
+      <XCircle size={16} />
+      {feedback.repeated
+        ? 'Этот вариант уже проверяли — он не подходит.'
+        : 'Улика не сходится. Ошибка записана в протокол.'}
+    </p>
+  );
+}
+
+function SqlChallenge({ onSolve, onMistake, solved }) {
+  const [feedback, check] = useAnswerCheck(onSolve, onMistake);
   const [query, setQuery] = useState({
     select: '*',
     where: "user_id = 'guest'",
@@ -477,10 +627,15 @@ FROM access_log
 WHERE ${query.where}
 ORDER BY ${query.order}
 LIMIT ${query.limit};`}</pre>
-        <button className="primary-action" disabled={!correct || solved} onClick={onSolve}>
+        <button
+          className="primary-action"
+          disabled={solved}
+          onClick={() => check(correct, Object.values(query).join('|'))}
+        >
           <Database size={18} />
           Подтвердить улику
         </button>
+        <AnswerFeedback feedback={feedback} />
       </div>
 
       <div className="data-table">
@@ -513,6 +668,11 @@ function QuerySelect({ label, value, options, onChange }) {
     <label className="query-part">
       <span>{label}</span>
       <select value={value} onChange={(event) => onChange(event.target.value)}>
+        {!options.includes(value) && (
+          <option value={value} disabled>
+            Выберите вариант
+          </option>
+        )}
         {options.map((option) => (
           <option key={option} value={option}>
             {option}
@@ -523,7 +683,8 @@ function QuerySelect({ label, value, options, onChange }) {
   );
 }
 
-function PythonChallenge({ onSolve, solved }) {
+function PythonChallenge({ onSolve, onMistake, solved }) {
+  const [feedback, check] = useAnswerCheck(onSolve, onMistake);
   const [condition, setCondition] = useState('if "INFO" in line:');
   const [extractor, setExtractor] = useState("line.split('msg=')[1]");
   const [joiner, setJoiner] = useState("''.join(parts)");
@@ -599,16 +760,22 @@ print(${joiner})`}</pre>
           onChange={(event) => setAnswer(event.target.value)}
           placeholder="Введите текст..."
         />
-        <button className="primary-action" disabled={!correct || solved} onClick={onSolve}>
+        <button
+          className="primary-action"
+          disabled={!answer.trim() || solved}
+          onClick={() => check(correct, [condition, extractor, joiner, answer.trim().toUpperCase()].join('|'))}
+        >
           <Code2 size={18} />
           Записать в дело
         </button>
+        <AnswerFeedback feedback={feedback} />
       </div>
     </div>
   );
 }
 
-function SecurityChallenge({ onSolve, solved }) {
+function SecurityChallenge({ onSolve, onMistake, solved }) {
+  const [feedback, check] = useAnswerCheck(onSolve, onMistake);
   const mailSignals = [
     { label: 'В теме письма есть номер обращения', danger: false },
     { label: 'Письмо пугает блокировкой через 15 минут', danger: true },
@@ -688,16 +855,22 @@ function SecurityChallenge({ onSolve, solved }) {
           <span>quarantine: изолировать для анализа</span>
           <span>reply: ответить отправителю</span>
         </div>
-        <button className="primary-action" disabled={!correct || solved} onClick={onSolve}>
+        <button
+          className="primary-action"
+          disabled={selected.length === 0 || solved}
+          onClick={() => check(correct, [...selected].sort().join('|') + `|${action}`)}
+        >
           <ShieldAlert size={18} />
           Закрыть инцидент
         </button>
+        <AnswerFeedback feedback={feedback} />
       </div>
     </div>
   );
 }
 
-function NetworkChallenge({ onSolve, solved }) {
+function NetworkChallenge({ onSolve, onMistake, solved }) {
+  const [feedback, check] = useAnswerCheck(onSolve, onMistake);
   const nodes = ['ЛАБ-07', 'Коммутатор 2 этажа', 'Главный маршрутизатор', 'Защитный экран', 'AURORA'];
   const nodeLayout = {
     'ЛАБ-07': { x: '8%', y: '58%' },
@@ -764,17 +937,23 @@ function NetworkChallenge({ onSolve, solved }) {
             <RotateCcw size={16} />
             Сбросить
           </button>
-          <button className="primary-action" disabled={!correct || solved} onClick={onSolve}>
+          <button
+            className="primary-action"
+            disabled={route.length !== nodes.length || solved}
+            onClick={() => check(correct, route.join('>'))}
+          >
             <Network size={18} />
             Восстановить маршрут
           </button>
         </div>
+        <AnswerFeedback feedback={feedback} />
       </div>
     </div>
   );
 }
 
-function WorkflowChallenge({ onSolve, solved }) {
+function WorkflowChallenge({ onSolve, onMistake, solved }) {
+  const [feedback, check] = useAnswerCheck(onSolve, onMistake);
   const steps = [
     'Создать задачу: проверить NOVA-17',
     'Создать отдельную ветку',
@@ -848,10 +1027,15 @@ function WorkflowChallenge({ onSolve, solved }) {
           <span>skip-tests: пропустить тесты</span>
           <span>commit-to-main: писать сразу в main</span>
         </div>
-        <button className="primary-action" disabled={!correct || solved} onClick={onSolve}>
+        <button
+          className="primary-action"
+          disabled={selected.length !== steps.length || !review || solved}
+          onClick={() => check(correct, `${selected.join('|')}|${review}`)}
+        >
           <GitBranch size={18} />
           Выполнить слияние
         </button>
+        <AnswerFeedback feedback={feedback} />
       </div>
     </div>
   );

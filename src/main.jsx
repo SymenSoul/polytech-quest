@@ -1,6 +1,7 @@
 import { Component, StrictMode, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
+import { ResultsPage } from './Results.jsx';
 import './styles.css';
 
 class ErrorBoundary extends Component {
@@ -27,10 +28,12 @@ class ErrorBoundary extends Component {
   }
 }
 
+const isResultsPage = window.location.pathname.replace(/\/+$/, '') === '/results';
+
 createRoot(document.getElementById('root')).render(
   createElement(
     StrictMode,
     null,
-    createElement(ErrorBoundary, null, createElement(App)),
+    createElement(ErrorBoundary, null, createElement(isResultsPage ? ResultsPage : App)),
   ),
 );

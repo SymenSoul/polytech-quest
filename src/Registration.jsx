@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Cat,
+  CloudOff,
   Coffee,
   Flame,
   Hourglass,
@@ -22,7 +23,7 @@ import {
   plural,
   recommendedLevel,
 } from '../shared/quest.js';
-import { request } from './api.js';
+import { backendKind, request } from './api.js';
 
 export const LEVEL_ICONS = { junior: PawPrint, senior: Cat, expert: Flame };
 
@@ -113,6 +114,8 @@ export default function Registration({ onRegister, presetLevel }) {
             сложности. Таймер запустится после кнопки «Начать расследование».
           </p>
         </div>
+
+        {backendKind() === 'local' && <OfflineBanner />}
 
         <form className="gate-form" onSubmit={submit}>
           <div className="query-part">
@@ -236,6 +239,18 @@ function LevelCard({ level, selected, recommended, onSelect }) {
       <span>{level.description}</span>
       {recommended && <em>рекомендуем для вашего класса</em>}
     </button>
+  );
+}
+
+export function OfflineBanner() {
+  return (
+    <p className="offline-banner">
+      <CloudOff size={18} />
+      <span>
+        <strong>Автономный режим.</strong> Сервер квеста не найден, поэтому результаты сохраняются только в этом
+        браузере. Таблица и выгрузка CSV — на странице рейтинга этого компьютера.
+      </span>
+    </p>
   );
 }
 

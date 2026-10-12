@@ -13,8 +13,8 @@ import {
   XCircle,
 } from 'lucide-react';
 import { DEFAULT_SETTINGS, LEVELS, LEVEL_IDS, STATUS_LABELS, formatDuration } from '../shared/quest.js';
-import { request, useNow } from './api.js';
-import { LEVEL_ICONS, ScoringRules } from './Registration.jsx';
+import { backendKind, request, useNow } from './api.js';
+import { LEVEL_ICONS, OfflineBanner, ScoringRules } from './Registration.jsx';
 import { Review } from './Review.jsx';
 import { routeHref } from './routes.js';
 
@@ -166,6 +166,10 @@ export function ResultsPage() {
   const [keyInput, setKeyInput] = useState('');
   const [adminError, setAdminError] = useState('');
 
+  // В автономном режиме данные лежат на этом компьютере, поэтому ключ организатора не нужен.
+  const localMode = backendKind() === 'local';
+  const canManage = localMode || Boolean(adminKey);
+
   // По умолчанию открываем первый уровень, где уже есть участники.
   const activeTab = tab ?? LEVEL_IDS.find((id) => levelRows(board, id).length > 0) ?? 'senior';
 
@@ -197,7 +201,7 @@ export function ResultsPage() {
     }
   }
 
-  const onDelete = adminKey
+  const onDelete = canManage
     ? (row) => adminAction(`/api/players/${row.id}`, `Удалить «${row.team}» из таблицы?`)
     : null;
 
@@ -214,13 +218,21 @@ export function ResultsPage() {
             <span>Обновляется автоматически</span>
           </div>
         </div>
-        <a className="ghost-action" href="/api/results.csv">
-          <Download size={16} />
-          Скачать CSV для Excel
-        </a>
+        {localMode ? (
+          <button className="ghost-action" onClick={downloadLocalCsv}>
+            <Download size={16} />
+            Скачать CSV для Excel
+          </button>
+        ) : (
+          <a className="ghost-action" href="/api/results.csv">
+            <Download size={16} />
+            Скачать CSV для Excel
+          </a>
+        )}
       </header>
 
       <h1>Рейтинг</h1>
+      {localMode && <OfflineBanner />}
       {error && <p className="answer-feedback">{error}</p>}
 
       {board && (
@@ -262,8 +274,8 @@ export function ResultsPage() {
           <KeyRound size={16} />
           Для организатора
         </div>
-        {adminKey && <SettingsForm adminKey={adminKey} onForbidden={logoutAdmin} />}
-        {adminKey ? (
+        {canManage && <SettingsForm adminKey={adminKey} onForbidden={logoutAdmin} />}
+        {canManage ? (
           <div className="action-row">
             <span className="muted">Режим управления включен: можно удалять строки.</span>
             <div className="action-row">
@@ -276,9 +288,11 @@ export function ResultsPage() {
                 <Trash2 size={16} />
                 Очистить таблицу
               </button>
-              <button className="ghost-action" onClick={logoutAdmin}>
-                Выйти
-              </button>
+              {!localMode && (
+                <button className="ghost-action" onClick={logoutAdmin}>
+                  Выйти
+                </button>
+              )}
             </div>
           </div>
         ) : (
@@ -406,6 +420,16 @@ function LeaderboardTable({ rows, clockOffset, highlightId, onDelete }) {
       </table>
     </div>
   );
+}
+
+// В автономном режиме CSV собирается прямо в браузере и сохраняется как файл.
+async function downloadLocalCsv() {
+  const csv = await request('/api/results.csv');
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  link.download = 'polytech-quest-results.csv';
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
 function readAdminKey() {

@@ -350,7 +350,7 @@ function QuestGame({ session }) {
 
 // Таймер и счетчики команды в боковой панели; перерисовывается раз в секунду отдельно от квеста.
 function MissionStats({ session, onLogout }) {
-  const { player, clockOffset, offline } = session;
+  const { player, clockOffset, offline, backend } = session;
   const now = useNow() + clockOffset;
   const elapsed = player.status === 'playing' ? now - player.startedAt : player.elapsedMs;
   // В режиме «на время» во время игры показываем, сколько осталось, иначе — сколько прошло.
@@ -398,10 +398,11 @@ function MissionStats({ session, onLogout }) {
         Мой результат
         <ExternalLink size={14} />
       </a>
+      {backend === 'local' && <span className="offline-note">Автономный режим: результаты на этом компьютере</span>}
       {offline && (
         <span className="offline-note">
           <WifiOff size={14} />
-          Нет связи с сервером, повторяем...
+          Нет связи с сервером: игра идёт, результаты отправятся позже
         </span>
       )}
     </div>

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Check, Circle, History, Hourglass, Clock3, Medal, TerminalSquare } from 'lucide-react';
 import { LEVELS, MODULE_LABELS, STATUS_LABELS, formatDuration } from '../shared/quest.js';
-import { request, sessionHistory, tokenStorage, useNow } from './api.js';
+import { backendKind, request, sessionHistory, sessionMirror, tokenStorage, useNow } from './api.js';
 import { ScoreBreakdown } from './Results.jsx';
 import { Review } from './Review.jsx';
 import { routeHref } from './routes.js';
@@ -14,14 +14,22 @@ export function MyResultPage() {
 
   const load = useCallback(async () => {
     const token = tokenStorage.read();
+    const mirror = sessionMirror.read();
+    const saved = mirror?.token === token ? mirror : null;
     const history = sessionHistory.read().filter((item) => item.token !== token);
+    const fetchSession = (itemToken, backend) =>
+      request('/api/session', { token: itemToken, backend }).catch((error) => ({ error }));
 
-    const [currentData, ...pastData] = await Promise.all(
-      [token, ...history.map((item) => item.token)].map((itemToken) =>
-        itemToken ? request('/api/session', { token: itemToken }).catch((error) => ({ error })) : null,
-      ),
-    );
+    const [fetched, ...pastData] = await Promise.all([
+      token ? fetchSession(token, saved?.backend ?? backendKind()) : null,
+      ...history.map((item) => fetchSession(item.token, item.backend ?? 'server')),
+    ]);
 
+    // Сервер недоступен — показываем сохранённую на этом компьютере копию.
+    let currentData = fetched;
+    if (fetched?.error?.status === 0 && saved?.player) {
+      currentData = { now: Date.now() + saved.clockOffset, scoring: saved.scoring, player: saved.player };
+    }
     if (currentData?.error && currentData.error.status !== 401) {
       setStatus('error');
       return;

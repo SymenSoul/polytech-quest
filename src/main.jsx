@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
 import { ResultsPage } from './Results.jsx';
 import { MyResultPage } from './MyResult.jsx';
+import { detectBackend } from './api.js';
 import { currentRoute } from './routes.js';
 import './styles.css';
 
@@ -37,10 +38,9 @@ const page = pages[route] ? createElement(pages[route]) : createElement(App, { r
 // Переход между маршрутами внутри файла (#/…) — просто перезагружаем страницу.
 window.addEventListener('hashchange', () => window.location.reload());
 
-createRoot(document.getElementById('root')).render(
-  createElement(
-    StrictMode,
-    null,
-    createElement(ErrorBoundary, null, page),
-  ),
-);
+// Сначала выясняем, есть ли сервер квеста; если нет — работаем в автономном режиме.
+detectBackend().then(() => {
+  createRoot(document.getElementById('root')).render(
+    createElement(StrictMode, null, createElement(ErrorBoundary, null, page)),
+  );
+});

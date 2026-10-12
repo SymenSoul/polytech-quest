@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   BookOpen,
+  CloudOff,
   Download,
   KeyRound,
   Lightbulb,
@@ -277,6 +278,19 @@ export function ResultsPage() {
           <KeyRound size={16} />
           Для организатора
         </div>
+        {!localMode && (
+          <div className="offline-download">
+            <a className="ghost-action" href="/api/offline" download>
+              <CloudOff size={16} />
+              Скачать офлайн-версию квеста
+            </a>
+            <span className="muted">
+              Если на мероприятии может пропасть интернет: скачайте файл заранее и положите на рабочий стол
+              каждого компьютера. Он открывается двойным щелчком и работает без интернета, а результаты
+              сохраняются на этом компьютере.
+            </span>
+          </div>
+        )}
         {canManage && <SettingsForm adminKey={adminKey} onForbidden={logoutAdmin} />}
         {canManage ? (
           <div className="action-row">

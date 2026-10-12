@@ -61,7 +61,9 @@ let vite = null;
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
 
-  if (url.pathname.startsWith('/api/')) {
+  if (url.pathname === '/api/offline') {
+    sendOfflineVersion(res);
+  } else if (url.pathname.startsWith('/api/')) {
     await handleApi(req, res, url);
   } else if (vite) {
     vite.middlewares(req, res);
@@ -93,6 +95,25 @@ server.listen(PORT, HOST, () => {
   console.log(`Ключ организатора:    ${ADMIN_KEY}${process.env.ADMIN_KEY ? '' : ' (задайте ADMIN_KEY, чтобы он не менялся)'}`);
   console.log(`Файл с результатами:  ${DATA_FILE}\n`);
 });
+
+// Офлайн-версия — тот же собранный index.html, но как файл для скачивания. Открытый двойным щелчком,
+// он работает без интернета: результаты сохраняются в браузере компьютера (автономный режим).
+function sendOfflineVersion(res) {
+  const file = path.join(distDir, 'index.html');
+  // В режиме разработки dist/ может быть устаревшим — отдаём только настоящую сборку.
+  if (isDev || !existsSync(file)) {
+    res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: 'Офлайн-версия появляется после сборки: npm run build.' }));
+    return;
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Content-Disposition': `attachment; filename="polytech-quest-offline.html"; filename*=UTF-8''${encodeURIComponent('Квест-офлайн.html')}`,
+    'Cache-Control': 'no-store',
+  });
+  createReadStream(file).pipe(res);
+}
 
 async function serveStatic(req, res, url) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {

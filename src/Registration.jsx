@@ -24,6 +24,7 @@ import {
   recommendedLevel,
 } from '../shared/quest.js';
 import { backendKind, request } from './api.js';
+import { routeHref } from './routes.js';
 
 export const LEVEL_ICONS = { junior: PawPrint, senior: Cat, expert: Flame };
 
@@ -248,7 +249,8 @@ export function OfflineBanner() {
       <CloudOff size={18} />
       <span>
         <strong>Автономный режим.</strong> Сервер квеста не найден, поэтому результаты сохраняются только в этом
-        браузере. Таблица и выгрузка CSV — на странице рейтинга этого компьютера.
+        браузере. Таблица и выгрузка CSV — на странице{' '}
+        <a href={routeHref('results')}>«Рейтинг этого компьютера»</a>.
       </span>
     </p>
   );

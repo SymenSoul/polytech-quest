@@ -1615,3 +1615,24 @@ a.primary-action {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Офлайн-версия */
+
+.offline-download {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(237, 247, 255, 0.1);
+}
+
+.offline-download .muted {
+  flex: 1 1 320px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.offline-banner a {
+  color: #ffdd55;
+}

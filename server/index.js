@@ -83,11 +83,12 @@ if (isDev) {
 
 server.listen(PORT, HOST, () => {
   console.log(`\nPolytech Cyber Quest запущен${isDev ? ' (режим разработки)' : ''}.\n`);
-  console.log('Адреса для подключения учеников:');
+  console.log('Адреса сетевых интерфейсов этого сервера:');
   for (const address of lanAddresses()) {
     console.log(`  http://${address}:${PORT}`);
   }
   console.log(`  http://localhost:${PORT} (на этом компьютере)`);
+  console.log('Если сервер в облаке, ученикам нужен его внешний IP или домен из панели провайдера.');
   console.log('\nСсылки сразу на уровень: добавьте к адресу /junior, /senior или /expert.');
   const limits = LEVEL_IDS.map((id) => `${LEVELS[id].name} ${store.settings.timeLimits[id]} мин`).join(', ');
   console.log(`Лимиты режима «на время»: ${limits}.`);
